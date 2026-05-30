@@ -486,8 +486,13 @@ class Observer:
         session = self.learning_session
         day_number = max(1, session.day_number(now) - 1)
         try:
+            # Use the realistic cycle ceiling so a 24/7-running bot reads
+            # green, not red (see learning.REALISTIC_CYCLE_SECONDS).
+            from .learning import REALISTIC_CYCLE_SECONDS
+            effective = max(float(session.interval_seconds),
+                            float(REALISTIC_CYCLE_SECONDS))
             metric = roll_up_day(self.db, day_date, day_number,
-                                 int(86_400 / session.interval_seconds))
+                                 int(86_400 / effective))
             self.db.upsert_daily_metric(day_date, **metric)
             write_daily_report(self.db, day_date)
             self._activity(f"daily report generated for {day_date}",

@@ -20,6 +20,15 @@ from typing import Any, Dict, Optional
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 LEARNING_STATE_PATH = _REPO_ROOT / "data" / "learning_state.json"
 
+#: Minimum realistic wall-clock seconds for one full cycle. The configured
+#: --interval is the WAIT between cycles; a cycle's actual work (scanning N
+#: symbols, each ~3 Binance round-trips) takes ~2-3 minutes on the live bot.
+#: Using interval alone (e.g. 60s) as the denominator for "expected_cycles"
+#: produces an unreachable ceiling — the day timeline then shows permanent
+#: red even when the bot runs 24/7. We clamp the denominator to at least
+#: this floor so the metric reflects what is physically achievable.
+REALISTIC_CYCLE_SECONDS = 180
+
 # The six learning phases, in order, with the progress fraction at which each
 # ends. Fractions (not fixed days) so any ``--days`` value maps sensibly.
 LEARNING_PHASES = [
@@ -71,13 +80,18 @@ class LearningSession:
     def progress_pct(self, now: datetime) -> float:
         return min(100.0, self.days_elapsed(now) / self.target_days * 100.0)
 
+    @property
+    def _effective_cycle_seconds(self) -> float:
+        """Realistic per-cycle wall time (interval clamped to the floor)."""
+        return max(float(self.interval_seconds), float(REALISTIC_CYCLE_SECONDS))
+
     def total_expected_cycles(self) -> int:
-        return int(self.target_days * 86_400 / self.interval_seconds)
+        return int(self.target_days * 86_400 / self._effective_cycle_seconds)
 
     def expected_cycles(self, now: datetime) -> int:
-        """Cycles that *should* have run by ``now`` at the configured interval."""
+        """Cycles that *should* have run by ``now`` at the realistic cycle rate."""
         elapsed = (now - self.start).total_seconds()
-        return max(1, int(elapsed / self.interval_seconds))
+        return max(1, int(elapsed / self._effective_cycle_seconds))
 
     def uptime_pct(self, now: datetime) -> float:
         return min(100.0, self.cycles_completed

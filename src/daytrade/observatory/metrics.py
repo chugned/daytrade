@@ -117,7 +117,12 @@ def roll_up_day(db, day_date: str, day_number: int,
     predictions = _on(db.recent_predictions(limit=20000))
     outcomes = _on(db.outcomes(limit=20000), key="predicted_ts")
     closed = _on(db.closed_paper_trades(limit=20000), key="ts_close")
-    errors = _on(db.recent_errors(limit=5000))
+    # The errors table also collects informational alerts (e.g.
+    # "illiquid — excluded from paper trading"); those are notices about
+    # market conditions, not software faults. Only real exceptions should
+    # turn a day red.
+    errors = [e for e in _on(db.recent_errors(limit=5000))
+              if not str(e.get("context", "")).startswith("alert:")]
 
     cycles = len(safety)
     scored = [o for o in outcomes if o.get("directionally_correct") is not None]
