@@ -114,6 +114,10 @@ class Observer:
         self._open: Dict[str, Dict[str, float]] = {}
         self._risk = RiskEngine(config.risk, self._starting_cash)
         self._peak_equity = self._starting_cash
+        # Push notifier — picks Telegram / ntfy / log based on env vars.
+        from ..ops import build_notifier, Level as _NotifyLevel
+        self._notify = build_notifier()
+        self._NotifyLevel = _NotifyLevel
         # Meta-labelling model (Phase 4): a precision filter on BUY signals,
         # retrained periodically on pooled triple-barrier outcomes.
         self._meta = MetaLabelModel()
@@ -619,6 +623,14 @@ class Observer:
                        f"qty {sizing.quantity:.4f} @ {decision.entry:.4f} (sim)")
         _log.info("paper-opened %s qty=%.6f entry=%.4f (sim)",
                   symbol, sizing.quantity, decision.entry)
+        try:
+            self._notify.notify(
+                f"Paper trade opened — {symbol}",
+                f"qty {sizing.quantity:.4f} @ {decision.entry:.4f}\n"
+                f"stop {decision.stop:.4f} target {decision.target:.4f}",
+                self._NotifyLevel.INFO)
+        except Exception:  # noqa: BLE001 - notify must never break a trade
+            pass
 
     def _manage_positions(self, now: datetime) -> int:
         """Close any open paper position whose stop or target was reached."""
@@ -650,6 +662,15 @@ class Observer:
             closed += 1
             _log.info("paper-closed %s exit=%.4f pnl=%.2f (sim)",
                       symbol, exit_price, pnl)
+            try:
+                lvl = (self._NotifyLevel.WARN if pnl < 0
+                       else self._NotifyLevel.INFO)
+                self._notify.notify(
+                    f"Paper trade closed — {symbol}",
+                    f"exit {exit_price:.4f} · PnL €{pnl:+.2f}",
+                    lvl)
+            except Exception:  # noqa: BLE001
+                pass
         return closed
 
     def _equity(self, now: datetime) -> float:
