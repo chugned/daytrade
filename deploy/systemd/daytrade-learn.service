@@ -1,0 +1,46 @@
+# Linux/systemd unit for the daytrade learning observer.
+#
+# Install on a VPS:
+#     sudo cp deploy/systemd/daytrade-learn.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now daytrade-learn
+#
+# Status:
+#     systemctl status daytrade-learn
+#     journalctl -u daytrade-learn -f
+
+[Unit]
+Description=daytrade Paper Trading Learning Observer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Replace with your VPS deployment user and path:
+User=daytrade
+Group=daytrade
+WorkingDirectory=/opt/daytrade
+Environment=PYTHONPATH=src
+# Use the venv's python if you provisioned one:
+ExecStart=/opt/daytrade/.venv/bin/python -m daytrade learn --days 30 --interval 60 --real-data
+
+# Restart on any non-zero exit, with a 10s gap to avoid crash loops.
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+# Logs go to journalctl; rotate via the system's journald config.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=daytrade-learn
+
+# Hardening — least privilege the process needs.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ReadWritePaths=/opt/daytrade
+
+[Install]
+WantedBy=multi-user.target

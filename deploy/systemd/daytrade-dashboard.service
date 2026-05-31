@@ -1,0 +1,39 @@
+# Linux/systemd unit for the daytrade dashboard.
+#
+# Install on a VPS:
+#     sudo cp deploy/systemd/daytrade-dashboard.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now daytrade-dashboard
+
+[Unit]
+Description=daytrade Read-Only Dashboard
+After=network-online.target daytrade-learn.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=daytrade
+Group=daytrade
+WorkingDirectory=/opt/daytrade
+Environment=PYTHONPATH=src
+# Optional: enable HTTP Basic Auth for the dashboard:
+# Environment=DASHBOARD_PASSWORD=set-something-strong
+ExecStart=/opt/daytrade/.venv/bin/python -m daytrade dashboard --host 0.0.0.0 --port 8000
+
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=daytrade-dashboard
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ReadWritePaths=/opt/daytrade
+
+[Install]
+WantedBy=multi-user.target
