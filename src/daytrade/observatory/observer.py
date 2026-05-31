@@ -129,6 +129,17 @@ class Observer:
         crashed = self.db.mark_dangling_runs_crashed()
         if crashed:
             _log.warning("recovered %d crashed/abandoned prior run(s)", crashed)
+        # Startup reconciliation — verify the local DB state is consistent
+        # before the bot starts acting on it. Anomalies are logged loudly so
+        # they don't pass silently into another run.
+        from ..ops import reconcile_paper_state
+        report = reconcile_paper_state(self.db)
+        if not report.ok:
+            _log.warning("startup reconciliation FAILED: %s", report.summary())
+            for issue in report.anomalies:
+                _log.warning("  reconciliation anomaly: %s", issue)
+        else:
+            _log.info("startup reconciliation OK: %s", report.summary())
         self._run_id = self.db.start_bot_run(pid=os.getpid())
         self._reload_open_positions()
         _log.info("observer run #%d started (pid=%d), %d open position(s) reloaded",

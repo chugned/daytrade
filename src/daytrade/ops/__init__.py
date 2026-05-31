@@ -14,10 +14,13 @@ from __future__ import annotations
 
 from .instance_lock import SingleInstanceLock, SingleInstanceLockError
 from .order_ids import OrderIDRegistry, generate_client_order_id
+from .reconciliation import ReconciliationReport, reconcile_paper_state
 
 __all__ = [
     "SingleInstanceLock",
     "SingleInstanceLockError",
     "OrderIDRegistry",
     "generate_client_order_id",
+    "ReconciliationReport",
+    "reconcile_paper_state",
 ]
