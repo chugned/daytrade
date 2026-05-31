@@ -38,6 +38,7 @@ from .feed import LiveMockFeed
 from .metrics import roll_up_day
 from ..ml.meta import MetaLabelModel
 from .calibration import ConfidenceCalibrator
+from .multi_timeframe import check_higher_tf_alignment
 from .prediction_tracker import build_prediction_memory, evaluate_prediction
 from .readiness import ReadinessInputs, compute_readiness
 from .regime_gate import evaluate_regime_gate
@@ -577,6 +578,18 @@ class Observer:
                     f"win prob {meta_proba:.0%} below {floor:.0%} "
                     f"(base rate {base:.0%})")
                 return
+        # Multi-timeframe alignment gate — Tier-1 of the 10x research
+        # roadmap. Off by default; flip on via gating.require_higher_tf_alignment.
+        if self.config.gating.require_higher_tf_alignment:
+            candles_for_mtf = self._meta_candles.get(symbol)
+            if candles_for_mtf:
+                mtf = check_higher_tf_alignment(
+                    candles_for_mtf,
+                    decision.action.value,
+                    min_slope=self.config.gating.higher_tf_min_slope)
+                if not mtf.aligned:
+                    self._activity(f"higher-TF gate blocked {symbol}", mtf.reason)
+                    return
         permission = self._risk.evaluate_entry(
             equity, open_positions=len(self._open), bar_index=self._cycle)
         if not permission.allowed:
