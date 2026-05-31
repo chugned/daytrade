@@ -419,6 +419,23 @@ class GatingConfig(_Section):
                     "on real 1-minute data: ~7x precision lift while still "
                     "keeping enough trades to learn from.",
     )
+    use_liquidation_cascade_gate: bool = Field(
+        default=False,
+        description="Block new long entries when the proxy liquidation-"
+                    "cascade detector is in CASCADE_ACTIVE state. Off by "
+                    "default until sweep-validated on the deployed symbol "
+                    "set. Paper-only.",
+    )
+    cascade_body_atr_threshold: float = Field(
+        default=2.0, gt=0.0,
+        description="Bar body magnitude (ATR units) required to call a "
+                    "cascade active.",
+    )
+    cascade_volume_spike_ratio: float = Field(
+        default=3.0, gt=0.0,
+        description="Bar volume / trailing mean volume required to call "
+                    "a cascade active.",
+    )
 
 
 class AppConfig(_Section):
