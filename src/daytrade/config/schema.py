@@ -425,6 +425,41 @@ class GatingConfig(_Section):
                     "on real 1-minute data: ~7x precision lift while still "
                     "keeping enough trades to learn from.",
     )
+    use_fear_greed_gate: bool = Field(
+        default=False,
+        description="Block contrarian-unfavourable trades when the Crypto "
+                    "Fear & Greed Index is at an extreme. Disabled by default "
+                    "until validated; enable via config. Paper-only.",
+    )
+    fear_greed_extreme_greed: float = Field(
+        default=80.0, ge=0.0, le=100.0,
+        description="Score >= this (0-100 scale) is 'extreme greed' — "
+                    "the index has historically marked local tops, so when "
+                    "the gate is on we block new longs at this level.",
+    )
+    fear_greed_extreme_fear: float = Field(
+        default=20.0, ge=0.0, le=100.0,
+        description="Score <= this is 'extreme fear' — historically near "
+                    "local bottoms, so when the gate is on we block new "
+                    "shorts at this level.",
+    )
+    use_liquidation_cascade_gate: bool = Field(
+        default=False,
+        description="Block new long entries when the proxy liquidation-"
+                    "cascade detector is in CASCADE_ACTIVE state. Off by "
+                    "default until sweep-validated on the deployed symbol "
+                    "set. Paper-only.",
+    )
+    cascade_body_atr_threshold: float = Field(
+        default=2.0, gt=0.0,
+        description="Bar body magnitude (ATR units) required to call a "
+                    "cascade active.",
+    )
+    cascade_volume_spike_ratio: float = Field(
+        default=3.0, gt=0.0,
+        description="Bar volume / trailing mean volume required to call "
+                    "a cascade active.",
+    )
 
 
 class AppConfig(_Section):

@@ -87,6 +87,11 @@ def walk_forward_validate(
         try:
             test_proba = estimator.predict_proba(X_te)[:, 1]
             test_auc = float(roc_auc_score(y_te, test_proba))
+            if not np.isfinite(test_auc):
+                # roc_auc_score returns NaN (not raises) when y_te is
+                # single-class — treat as "no information" rather than
+                # propagating NaN into the validated WalkForwardFold.
+                test_auc = 0.5
         except (ValueError, IndexError):
             test_auc = 0.5
 
