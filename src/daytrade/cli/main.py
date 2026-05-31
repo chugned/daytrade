@@ -502,6 +502,15 @@ def learn(
         os.environ["DAYTRADE_ALLOW_NETWORK"] = "true"
     cfg = _setup(profile)
     _console.rule(f"[bold]daytrade — {days}-Day Paper Trading Learning Observatory")
+    # Single-instance lock — refuse to start if another learn process is up.
+    # See daytrade.ops.instance_lock; the lock auto-releases on a clean exit.
+    from daytrade.ops import SingleInstanceLock, SingleInstanceLockError
+    _learn_lock = SingleInstanceLock("learn")
+    try:
+        _learn_lock.acquire()
+    except SingleInstanceLockError as exc:
+        _console.print(f"[red]Refusing to start:[/red] {exc}")
+        raise typer.Exit(code=2)
     _console.print("Paper / simulation only. No real trading, wallets, or "
                     "money movement. Ctrl+C to pause; the window resumes on "
                     "restart.")
@@ -521,7 +530,10 @@ def learn(
         f"phase '{session.phase(now)}', {session.cycles_completed} cycles done.")
     _console.print(f"Observing {len(observer.watchlist_config.symbols)} symbols "
                    f"every {interval}s. Open the dashboard to watch progress.\n")
-    observer.run_forever(interval)
+    try:
+        observer.run_forever(interval)
+    finally:
+        _learn_lock.release()
     _console.print("\n[green]Learning observer stopped.[/green] "
                    "Re-run 'trading-bot learn' to resume the window.")
 
@@ -544,6 +556,13 @@ def observe(
         os.environ["DAYTRADE_ALLOW_NETWORK"] = "true"
     cfg = _setup(profile)
     _console.rule("[bold]daytrade — Market Safety Observer")
+    from daytrade.ops import SingleInstanceLock, SingleInstanceLockError
+    _observe_lock = SingleInstanceLock("observe")
+    try:
+        _observe_lock.acquire()
+    except SingleInstanceLockError as exc:
+        _console.print(f"[red]Refusing to start:[/red] {exc}")
+        raise typer.Exit(code=2)
     _console.print("Paper / simulation only. No real orders, wallets, or "
                     "money movement. Press Ctrl+C to stop.\n")
 
@@ -560,7 +579,10 @@ def observe(
                         db=ObservatoryDB(), feed=build_feed(cfg), model=model)
     _console.print(f"Observing {len(observer.watchlist_config.symbols)} symbols "
                     f"every {interval}s. Database: {DEFAULT_DB_PATH}")
-    observer.run_forever(interval)
+    try:
+        observer.run_forever(interval)
+    finally:
+        _observe_lock.release()
     _console.print("\n[green]Observer stopped cleanly.[/green]")
 
 
@@ -572,11 +594,21 @@ def dashboard(
     """Launch the visual Market Safety dashboard (FastAPI + web UI)."""
     import uvicorn
     _console.rule("[bold]daytrade — Market Safety Dashboard")
+    from daytrade.ops import SingleInstanceLock, SingleInstanceLockError
+    _dash_lock = SingleInstanceLock("dashboard")
+    try:
+        _dash_lock.acquire()
+    except SingleInstanceLockError as exc:
+        _console.print(f"[red]Refusing to start:[/red] {exc}")
+        raise typer.Exit(code=2)
     _console.print(f"Dashboard: [bold]http://{host}:{port}[/bold]  "
                     f"(reads {DEFAULT_DB_PATH})")
     _console.print("Read-only observatory view. Ctrl+C to stop.\n")
-    uvicorn.run("daytrade.dashboard.app:app", host=host, port=port,
-                log_level="warning")
+    try:
+        uvicorn.run("daytrade.dashboard.app:app", host=host, port=port,
+                    log_level="warning")
+    finally:
+        _dash_lock.release()
 
 
 @app.command("report-daily")
