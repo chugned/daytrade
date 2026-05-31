@@ -67,6 +67,38 @@ gating:
 If the lift is negative or marginal, leave it off — the gate would just
 shrink trade count without improving precision.
 
+## Initial sweep result (20 days · BTC + ETH · 1m · 60m forward window)
+
+| min_slope | fires % | fwd@aligned | fwd@misaligned | baseline | lift |
+|---:|---:|---:|---:|---:|---:|
+| 0.00000 | 42.5 | −0.033% | −0.020% | −0.026% | **−0.007%** ⚠ |
+| 0.00005 | 38.2 | −0.036% | −0.019% | −0.026% | **−0.011%** ⚠ |
+| 0.00010 | 34.7 | −0.040% | −0.018% | −0.026% | **−0.015%** ⚠ |
+| 0.00020 | 26.7 | −0.033% | −0.023% | −0.026% | **−0.008%** ⚠ |
+| 0.00050 | 10.9 | **+0.009%** | −0.030% | −0.026% | **+0.035%** ✅ |
+
+**Honest reading.** Only the strictest threshold (`min_slope=0.0005`)
+selects bars with better-than-baseline forward returns. Looser
+thresholds (0.0–0.0002) actually *hurt* — they fire on weak, noisy
+"trends" that turn out to be worse than random bars.
+
+This is the same pattern the meta-gate sweep showed: a *relative*
+default is not always best; sometimes you need a tight absolute bar.
+
+If you enable this gate, **use the swept value:**
+
+```yaml
+gating:
+  require_higher_tf_alignment: true
+  higher_tf_min_slope: 0.0005     # sweep-best — anything below is worse
+```
+
+The gate then fires on only ~11% of bars but picks bars with a +0.035%
+hourly lift over baseline. The base rate at which it fires is low — so
+the bot trades less, but each trade is from a higher-quality regime.
+
+Re-sweep on different windows + symbols before locking it in.
+
 ## How this composes with the other branches
 
 | | Independent of MTF | Composes with MTF |
