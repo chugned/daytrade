@@ -419,6 +419,24 @@ class GatingConfig(_Section):
                     "on real 1-minute data: ~7x precision lift while still "
                     "keeping enough trades to learn from.",
     )
+    use_fear_greed_gate: bool = Field(
+        default=False,
+        description="Block contrarian-unfavourable trades when the Crypto "
+                    "Fear & Greed Index is at an extreme. Disabled by default "
+                    "until validated; enable via config. Paper-only.",
+    )
+    fear_greed_extreme_greed: float = Field(
+        default=80.0, ge=0.0, le=100.0,
+        description="Score >= this (0-100 scale) is 'extreme greed' — "
+                    "the index has historically marked local tops, so when "
+                    "the gate is on we block new longs at this level.",
+    )
+    fear_greed_extreme_fear: float = Field(
+        default=20.0, ge=0.0, le=100.0,
+        description="Score <= this is 'extreme fear' — historically near "
+                    "local bottoms, so when the gate is on we block new "
+                    "shorts at this level.",
+    )
 
 
 class AppConfig(_Section):
