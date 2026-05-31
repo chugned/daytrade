@@ -29,6 +29,11 @@ from .notify import (
 )
 from .order_ids import OrderIDRegistry, generate_client_order_id
 from .reconciliation import ReconciliationReport, reconcile_paper_state
+from .remote_log import (
+    RemoteLogHandler,
+    attach_remote_handler_from_env,
+    attach_rotating_file_handler,
+)
 
 __all__ = [
     "KeyPermissions",
@@ -41,6 +46,9 @@ __all__ = [
     "generate_client_order_id",
     "ReconciliationReport",
     "reconcile_paper_state",
+    "RemoteLogHandler",
+    "attach_remote_handler_from_env",
+    "attach_rotating_file_handler",
     "Notifier",
     "Level",
     "LogNotifier",
