@@ -50,6 +50,12 @@ class RuntimeConfig(_Section):
     deterministic: bool = True
     random_seed: int = 42
     allow_network: bool = False
+    max_data_age_seconds: int = Field(
+        default=300, ge=60,
+        description="Skip a symbol's decision this cycle if its most recent "
+                    "candle is older than this many seconds — a staleness "
+                    "guard so the bot never acts on a stale feed.",
+    )
 
     @field_validator("log_level")
     @classmethod

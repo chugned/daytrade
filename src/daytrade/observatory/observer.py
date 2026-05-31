@@ -272,6 +272,16 @@ class Observer:
         candles = self.feed.candles_at(symbol, now, n_bars=240)
         orderbook = self.feed.orderbook_at(symbol, now)
         tick = self.feed.tick_at(symbol, now)
+        # Staleness guard — never base a decision on data older than the
+        # configured floor. Returns early so the symbol simply gets no
+        # action this cycle (no prediction, no trade).
+        age = (now - candles[-1].timestamp).total_seconds()
+        max_age = self.config.runtime.max_data_age_seconds
+        if age > max_age:
+            self._activity(f"skipped {symbol}",
+                           f"stale data: latest candle {age:.0f}s old > "
+                           f"{max_age}s")
+            return None
         price = candles[-1].close
         # Keep this symbol's candles for the next meta-model retrain.
         self._meta_candles[symbol] = candles
