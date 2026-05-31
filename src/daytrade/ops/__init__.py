@@ -13,8 +13,11 @@ does not enable live trading — that structural guarantee is unchanged.
 from __future__ import annotations
 
 from .instance_lock import SingleInstanceLock, SingleInstanceLockError
+from .order_ids import OrderIDRegistry, generate_client_order_id
 
 __all__ = [
     "SingleInstanceLock",
     "SingleInstanceLockError",
+    "OrderIDRegistry",
+    "generate_client_order_id",
 ]
