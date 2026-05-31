@@ -12,6 +12,12 @@ does not enable live trading — that structural guarantee is unchanged.
 
 from __future__ import annotations
 
+from .api_keys import (
+    KeyPermissions,
+    WithdrawalPermissionForbidden,
+    assert_trade_only,
+    inspect_key,
+)
 from .instance_lock import SingleInstanceLock, SingleInstanceLockError
 from .notify import (
     Level,
@@ -25,6 +31,10 @@ from .order_ids import OrderIDRegistry, generate_client_order_id
 from .reconciliation import ReconciliationReport, reconcile_paper_state
 
 __all__ = [
+    "KeyPermissions",
+    "WithdrawalPermissionForbidden",
+    "assert_trade_only",
+    "inspect_key",
     "SingleInstanceLock",
     "SingleInstanceLockError",
     "OrderIDRegistry",
