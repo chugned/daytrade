@@ -460,6 +460,22 @@ class GatingConfig(_Section):
         description="Bar volume / trailing mean volume required to call "
                     "a cascade active.",
     )
+    # Multi-timeframe trend filter — Tier-1 of the 10x research roadmap.
+    # Documented ~80% false-signal reduction. Resamples 1m candles to 15m
+    # and 1h, then requires both higher-timeframe slopes to align with the
+    # primary signal direction before a trade is allowed. Off by default
+    # until proven on this watchlist (run scripts/sweep_mtf_filter.py).
+    require_higher_tf_alignment: bool = Field(
+        default=False,
+        description="If True, block BUYs whose 15m AND 1h trend are not "
+                    "aligned with the 1m signal. Filter ~80% of false "
+                    "1m signals in the literature.",
+    )
+    higher_tf_min_slope: float = Field(
+        default=0.0, ge=0.0,
+        description="Minimum absolute slope on the higher timeframes to count "
+                    "as an aligned trend. 0.0 = sign-only check.",
+    )
 
 
 class AppConfig(_Section):
