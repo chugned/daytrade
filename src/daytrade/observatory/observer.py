@@ -38,6 +38,7 @@ from .feed import LiveMockFeed
 from .metrics import roll_up_day
 from ..ml.meta import MetaLabelModel
 from .calibration import ConfidenceCalibrator
+from .funding import extreme_funding_blocks_buy, fetch_current_funding_rate
 from .prediction_tracker import build_prediction_memory, evaluate_prediction
 from .readiness import ReadinessInputs, compute_readiness
 from .regime_gate import evaluate_regime_gate
@@ -577,6 +578,18 @@ class Observer:
                     f"win prob {meta_proba:.0%} below {floor:.0%} "
                     f"(base rate {base:.0%})")
                 return
+        # Funding-rate gate — opt-in sentiment signal from the perp market.
+        # Extreme positive funding = crowded long positions = pullback risk.
+        if self.config.gating.use_funding_rate_gate:
+            snap = fetch_current_funding_rate(symbol)
+            if snap is not None:
+                block, reason = extreme_funding_blocks_buy(
+                    snap.rate,
+                    extreme_positive=self.config.gating.funding_extreme_positive,
+                    extreme_negative=self.config.gating.funding_extreme_negative)
+                if block:
+                    self._activity(f"funding gate blocked {symbol}", reason)
+                    return
         permission = self._risk.evaluate_entry(
             equity, open_positions=len(self._open), bar_index=self._cycle)
         if not permission.allowed:
