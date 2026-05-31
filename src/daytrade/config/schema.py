@@ -476,6 +476,26 @@ class GatingConfig(_Section):
         description="Minimum absolute slope on the higher timeframes to count "
                     "as an aligned trend. 0.0 = sign-only check.",
     )
+    # Funding-rate sentiment gate — opt-in alternative-data signal.
+    # Extreme positive funding = crowded longs = often precedes a pullback;
+    # blocking BUYs during such windows is a documented sentiment-based
+    # alpha in crypto. Off by default until proven on this watchlist
+    # (see scripts/sweep_funding_gate.py).
+    use_funding_rate_gate: bool = Field(
+        default=False,
+        description="If True, query Binance perpetual-futures funding rates "
+                    "and block BUYs when funding is extremely positive.",
+    )
+    funding_extreme_positive: float = Field(
+        default=0.0003, gt=0.0,
+        description="Block BUYs when funding rate exceeds this (as a "
+                    "fraction; 0.0003 = 0.03%).",
+    )
+    funding_extreme_negative: float = Field(
+        default=-0.0010, lt=0.0,
+        description="At or below this funding rate, explicitly allow the "
+                    "BUY (short-squeeze setup).",
+    )
 
 
 class AppConfig(_Section):
