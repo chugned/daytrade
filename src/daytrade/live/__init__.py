@@ -25,6 +25,7 @@ from .exchange import (
     OrderRejected,
     OrderState,
 )
+from .shadow import ShadowExchange
 
 __all__ = [
     "BinanceExchange",
@@ -38,5 +39,6 @@ __all__ = [
     "LiveBroker",
     "LiveBrokerError",
     "LiveConfig",
+    "ShadowExchange",
     "ShadowModeError",
 ]

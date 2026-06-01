@@ -539,6 +539,141 @@ def learn(
 
 
 @app.command()
+def shadow(
+    profile: Optional[str] = typer.Option(None, help="Config profile."),
+    interval: int = typer.Option(300, help="Seconds between cycles."),
+    api_key_env: str = typer.Option(
+        "DAYTRADE_BINANCE_KEY",
+        help="Env var with the Binance trade-only API key. If unset, "
+             "ShadowExchange uses a pure-mock reader (no real-Binance "
+             "balance lookup)."),
+    api_secret_env: str = typer.Option("DAYTRADE_BINANCE_SECRET",
+                                       help="Env var with the API secret."),
+    mock_starting_usdt: float = typer.Option(
+        1000.0,
+        help="Starting USDT for the MockExchange writer (only used when "
+             "credentials are NOT provided; otherwise the real Binance "
+             "balance overrides this)."),
+) -> None:
+    """Run the engine in SHADOW MODE — real Binance reads, fake order writes.
+
+    This is the final smoke test before real money:
+
+      - Real-time market data via the public Binance feed (already used
+        in normal ``observe`` mode).
+      - REAL account balance + position state via the authenticated
+        Binance read endpoints (only when API credentials are present;
+        the key MUST be trade-only — withdrawal-enabled keys are
+        REFUSED at startup).
+      - When the engine decides to place a trade, the order is routed
+        to an in-memory MockExchange. No real order. No money moves.
+
+    The Observer cycles as it would live, with the same gates and the
+    same risk engine. Run for 7 days and compare the shadow ledger
+    against your existing paper bot to verify the live wiring before
+    flipping the four real-money gates.
+
+    Paper / simulation only at the order layer. No real orders.
+    """
+    import os as _os
+    os.environ["DAYTRADE_ALLOW_NETWORK"] = "true"
+    cfg = _setup(profile)
+    _console.rule("[bold]daytrade — SHADOW MODE")
+    from daytrade.ops import SingleInstanceLock, SingleInstanceLockError
+    _shadow_lock = SingleInstanceLock("shadow")
+    try:
+        _shadow_lock.acquire()
+    except SingleInstanceLockError as exc:
+        _console.print(f"[red]Refusing to start:[/red] {exc}")
+        raise typer.Exit(code=2)
+
+    # Build the broker chain.
+    from daytrade.live import (
+        BinanceExchange, LiveBroker, LiveConfig, MockExchange,
+        ShadowExchange,
+    )
+    from daytrade.observatory.trading_broker import LiveBrokerAdapter
+    from daytrade.ops.api_keys import inspect_key
+
+    api_key = _os.environ.get(api_key_env, "").strip()
+    api_secret = _os.environ.get(api_secret_env, "").strip()
+
+    writer = MockExchange(starting_balance_usdt=mock_starting_usdt)
+
+    if api_key and api_secret:
+        _console.print(
+            "[yellow]Validating Binance API key permissions…[/yellow]")
+        try:
+            perms = inspect_key(api_key, api_secret)
+        except Exception as exc:  # noqa: BLE001
+            _console.print(f"[red]Key validation failed:[/red] {exc}")
+            raise typer.Exit(code=2)
+        _console.print(
+            f"Key trade={perms.can_trade} withdraw={perms.can_withdraw} "
+            f"internal_transfer={perms.can_internal_transfer}")
+        if perms.can_withdraw or perms.can_internal_transfer:
+            _console.print(
+                "[red]REFUSED:[/red] key has withdrawal or internal-"
+                "transfer permission. Disable those on the Binance API "
+                "settings and retry. Shadow mode will NOT proceed with "
+                "a key that could drain the account.")
+            raise typer.Exit(code=2)
+        try:
+            reader = BinanceExchange(
+                api_key=api_key, api_secret=api_secret,
+                permissions=perms,
+                writes_enabled=False,  # belt + suspenders
+            )
+        except Exception as exc:  # noqa: BLE001
+            _console.print(f"[red]Could not build Binance reader:[/red] {exc}")
+            raise typer.Exit(code=2)
+        _console.print(
+            "[green]✓[/green] Binance reader online (writes disabled).")
+    else:
+        _console.print(
+            "[yellow]No API credentials in env — using a mock reader. "
+            "This validates wiring but does not test against real "
+            "Binance balance state.[/yellow]")
+        reader = MockExchange(starting_balance_usdt=mock_starting_usdt)
+
+    shadow_exchange = ShadowExchange(reader=reader, writer=writer)
+    live_broker = LiveBroker(
+        LiveConfig(dry_run=True), shadow_exchange,
+    )
+    db = ObservatoryDB()
+    adapter = LiveBrokerAdapter(live_broker, db)
+
+    _console.print(
+        f"Shadow USDT balance: {writer.get_balance('USDT'):.2f} "
+        f"(synced from {'real Binance' if api_key else 'mock reader'})\n"
+        "[bold]Orders are routed to the in-memory MockExchange. "
+        "No real orders will be placed.[/bold]\n"
+        f"Cycle interval: {interval}s. Ctrl+C to stop.\n")
+
+    model = None
+    model_path = _MODELS / "model.pkl"
+    if model_path.exists():
+        try:
+            model = PredictiveModel.load(model_path)
+            _console.print(f"Loaded ML model: {model.version}")
+        except Exception as exc:  # noqa: BLE001
+            _console.print(f"[yellow]ML model not loaded:[/yellow] {exc}")
+
+    observer = Observer(
+        cfg, load_watchlist_config(),
+        db=db, feed=build_feed(cfg), model=model, broker=adapter,
+    )
+    _console.print(
+        f"Observing {len(observer.watchlist_config.symbols)} symbols "
+        f"every {interval}s. DB: {DEFAULT_DB_PATH}\n")
+    try:
+        observer.run_forever(interval)
+    finally:
+        _shadow_lock.release()
+    _console.print("\n[green]Shadow run stopped cleanly.[/green]")
+
+
+@app.command()
 def observe(
     profile: Optional[str] = typer.Option(None, help="Config profile."),
     interval: int = typer.Option(300, help="Seconds between observation cycles."),
