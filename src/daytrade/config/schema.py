@@ -20,29 +20,89 @@ class _Section(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+#: The exact phrase the operator must type into ``live_acknowledgement`` to
+#: open the gate. Long, deliberate, and contains the absolute floor on the
+#: failure mode (capital loss) so it cannot be flipped by autocompletion or
+#: by a copy-paste from a Discord screenshot.
+LIVE_ACKNOWLEDGEMENT_PHRASE = (
+    "I understand this places real orders with real money on Binance and "
+    "the maximum loss is the funded capital."
+)
+
+
 class SafetyConfig(_Section):
-    """Hard safety rails. These fields exist so the values are *visible* and
-    *asserted* — not so they can be flipped. The validator refuses any value
-    that would imply real trading; there is intentionally no escape hatch.
+    """Hard safety rails.
+
+    The default config is paper-only and the validator refuses to load
+    any combination of flags that implies live trading **unless** the
+    operator has also entered the exact :data:`LIVE_ACKNOWLEDGEMENT_PHRASE`
+    into ``live_acknowledgement``. That phrase is intentionally long and
+    specific — it cannot be set by accident, by a 1-line diff, or by any
+    tool's auto-completion. Going live is a deliberate two-field change
+    in this file.
+
+    Even with all three flags aligned, the eventual broker still gates
+    writes behind :class:`daytrade.live.LiveConfig.dry_run` and
+    :meth:`daytrade.live.BinanceExchange.enable_writes`. So three
+    deliberate actions across three locations are required, not one.
     """
 
     live_trading_enabled: bool = False
     allow_real_orders: bool = False
     paper_trading: bool = True
+    live_acknowledgement: str = Field(
+        default="",
+        description="The operator's explicit acknowledgement phrase. Must "
+                    "match LIVE_ACKNOWLEDGEMENT_PHRASE exactly for live "
+                    "trading to be allowed. Empty by default; do not "
+                    "store this in version control.",
+    )
 
     @model_validator(mode="after")
     def _enforce_paper_only(self) -> "SafetyConfig":
-        if self.live_trading_enabled:
+        # Aligned-but-no-acknowledgement is the most likely accidental
+        # path; check it first and refuse with a clear message.
+        any_live_flag = (self.live_trading_enabled
+                         or self.allow_real_orders
+                         or not self.paper_trading)
+        ack_correct = self.live_acknowledgement == LIVE_ACKNOWLEDGEMENT_PHRASE
+        if any_live_flag and not ack_correct:
             raise ValueError(
-                "live_trading_enabled must be false — real trading is disabled."
+                "Live-trading flags are set but live_acknowledgement does "
+                "NOT match the required phrase. To enable live trading "
+                "you must set live_acknowledgement to:\n\n"
+                f"  {LIVE_ACKNOWLEDGEMENT_PHRASE!r}\n\n"
+                "Leaving paper-only mode without this acknowledgement is "
+                "refused by design."
             )
-        if self.allow_real_orders:
+        if not any_live_flag and self.live_acknowledgement:
+            # An acknowledgement without the flags is harmless but
+            # suspicious — likely a half-finished edit.
             raise ValueError(
-                "allow_real_orders must be false — real trading is disabled."
+                "live_acknowledgement is set but no live-trading flags "
+                "are enabled. Either set live_trading_enabled+allow_real_orders "
+                "+paper_trading=false to match, or clear live_acknowledgement."
             )
-        if not self.paper_trading:
-            raise ValueError("paper_trading must be true — this platform is paper-only.")
+        if any_live_flag and ack_correct:
+            # All three flags aligned AND acknowledgement matches.
+            # Validate each flag is in the correct combination.
+            if not (self.live_trading_enabled and self.allow_real_orders
+                    and not self.paper_trading):
+                raise ValueError(
+                    "Live-trading flags must be set CONSISTENTLY: "
+                    "live_trading_enabled=true, allow_real_orders=true, "
+                    "paper_trading=false. Partial flips are refused."
+                )
         return self
+
+    @property
+    def is_live(self) -> bool:
+        """True iff every safety gate at this layer is open for live
+        trading. Code that places real orders MUST check this."""
+        return (self.live_trading_enabled
+                and self.allow_real_orders
+                and not self.paper_trading
+                and self.live_acknowledgement == LIVE_ACKNOWLEDGEMENT_PHRASE)
 
 
 class RuntimeConfig(_Section):

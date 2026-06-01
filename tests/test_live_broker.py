@@ -293,20 +293,26 @@ def test_round_trip_pnl_is_negative_after_fees_when_price_flat():
 
 
 def test_live_module_does_not_call_real_exchange_directly():
-    """The live package must not import ccxt or python-binance directly.
-    Only the Binance adapter (when written) may, and that adapter must
-    be gated by config.live.dry_run=False AND the SafetyConfig opt-in."""
+    """The live package must not import ccxt or python-binance directly,
+    EXCEPT in binance.py (the explicit adapter). The Binance adapter
+    itself must (a) be guarded by writes_enabled=False default and
+    (b) enforce the trade-only key check at construction. Other files
+    must remain exchange-library-free so a typo can't accidentally
+    enable live trading."""
     import pkgutil
 
     import daytrade.live as live_pkg
 
+    ALLOWED_TO_IMPORT_REAL_EXCHANGE = {"binance"}
+
     for mod in pkgutil.iter_modules(live_pkg.__path__):
         name = mod.name
+        if name in ALLOWED_TO_IMPORT_REAL_EXCHANGE:
+            continue
         src = open(f"{live_pkg.__path__[0]}/{name}.py").read()
-        # The MockExchange is the ONLY exchange currently. No real lib.
         assert "import ccxt" not in src, (
             f"live/{name}.py imports ccxt — this would enable live trading "
-            "without the SafetyConfig opt-in. Add a BinanceExchange in a "
-            "separate file with explicit gating.")
+            "without explicit gating. Live exchange writes must go through "
+            "the BinanceExchange adapter in live/binance.py only.")
         assert "from binance" not in src, (
             f"live/{name}.py imports python-binance directly — same problem.")

@@ -14,23 +14,29 @@ to a real exchange, but every piece ships behind:
 Going live is a deliberate, multi-step opt-in — not a flag flip.
 """
 
+from .binance import BinanceExchange, ShadowModeError, from_env as binance_from_env
 from .broker import LiveBroker, LiveBrokerError
+from .config import LiveConfig
 from .exchange import (
     Exchange,
     ExchangeOrder,
+    ExchangeUnreachable,
     MockExchange,
     OrderRejected,
     OrderState,
 )
-from .config import LiveConfig
 
 __all__ = [
+    "BinanceExchange",
+    "binance_from_env",
     "Exchange",
     "ExchangeOrder",
+    "ExchangeUnreachable",
     "MockExchange",
     "OrderState",
     "OrderRejected",
     "LiveBroker",
     "LiveBrokerError",
     "LiveConfig",
+    "ShadowModeError",
 ]

@@ -58,27 +58,58 @@ is directly comparable to "paper" PnL.
 
 ## What's next on the path to actual live trading
 
-1. **BinanceExchange adapter** (~200-300 LOC, separate branch).
-   Calls `ccxt.binance` for `create_market_order`, `fetch_balance`,
-   `fetch_position`. Wraps every call in `try/except` that maps to
-   `OrderRejected` / `ExchangeUnreachable`. Read-only at first
-   (`fetch_*`), then writes.
+1. ✅ **BinanceExchange adapter** — done in this branch
+   (`src/daytrade/live/binance.py`). Read paths fully wired
+   (`fetch_balance`, `fetch_position`, `list_open_orders`). Writes
+   exist but are gated by ``writes_enabled=False`` default; calling
+   ``place_market_order`` in shadow mode raises ``ShadowModeError``.
+   Trade-only key check (``WithdrawalPermissionForbidden``) runs at
+   construction. **Cannot start with a withdraw-enabled key, ever.**
+   23 tests, all using mocked ccxt clients.
 
-2. **`SafetyConfig` opt-in field**: e.g. `live_explicit_acknowledgement:
-   bool = False` + a separate `live_signed_message: str` that the
-   validator must verify against a known hash. So flipping live
-   requires two changes in two files, not one.
+2. ✅ **`SafetyConfig` two-key opt-in** — done in this branch. Going
+   live requires all three flag flips
+   (``live_trading_enabled``, ``allow_real_orders``,
+   ``not paper_trading``) **and** an exact-match acknowledgement
+   phrase in ``live_acknowledgement``. The validator refuses any
+   partial or inconsistent combination. 16 tests cover every
+   permutation. Single-line diffs cannot enable live trading.
 
-3. **Paper-on-live-data shadow mode**: run the engine for 7 days with
-   `LiveConfig.dry_run = True` against the **Binance** adapter
-   (read-only calls only). The broker books all decisions; the
-   adapter never actually places orders. Compare the resulting
-   dry-run PnL against what the real bot would have done. This is
-   the final smoke test before real money.
+3. ⏳ **Wire LiveBroker into the Observer engine** — DEFERRED.
+   Current Observer writes trade records straight to the SQLite DB
+   via ``db.insert_paper_trade`` / ``db.close_paper_trade``. It
+   does *not* go through PaperBroker, so swapping in LiveBroker
+   isn't a one-line change — it's a careful refactor that touches
+   the live engine that is currently profitable.
 
-4. **Tiny live deployment**: €100-200 subaccount, `max_stake_per_trade
-   = 10` for week 1, scale up only if PnL tracks the simulation in
-   `docs/REAL-MONEY-SIMULATION.md`.
+   Plan for step 3:
+   - Introduce a `BrokerProtocol` whose interface is what the
+     Observer's ``_open_position`` and ``_close_position`` actually
+     need (a tiny surface).
+   - Default to a thin ``DBPaperBroker`` adapter that wraps the
+     current direct-DB code (so existing behaviour is bit-for-bit
+     unchanged).
+   - Optional ``broker: BrokerProtocol`` parameter on ``Observer``;
+     when ``None`` the default ``DBPaperBroker`` is used.
+   - Tests against the current observatory cycle to prove the
+     refactor is behaviour-preserving.
+   - Then a new ``LiveBrokerAdapter`` that routes through the
+     ``LiveBroker``+``BinanceExchange`` chain.
+
+   This is a single follow-up branch. Don't break what's already
+   profitable.
+
+4. **Shadow mode end-to-end smoke** — after step 3, run the engine
+   for 7 days with the real ``BinanceExchange`` (``writes_enabled=
+   False``) and the LiveBroker (``dry_run=True``). The engine
+   reads real balances + positions from Binance, decides as
+   normal, the broker books trades into MockExchange, and we
+   compare with what the real bot would have done. Final smoke
+   test.
+
+5. **Tiny live deployment** — €100-200 subaccount,
+   ``max_stake_per_trade = 10`` for week 1, scale up only if PnL
+   tracks the simulation in ``docs/REAL-MONEY-SIMULATION.md``.
 
 ## Verification
 
