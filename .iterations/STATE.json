@@ -1,0 +1,19 @@
+{
+  "started_at_unix": 1780268266,
+  "stop_at_unix": 1780295392,
+  "stop_at_human": "2026-06-01 08:29 ",
+  "iterations": [
+    {
+      "n": 1,
+      "experiment": "research lab 5m x 30d x BTC/ETH/SOL",
+      "task_id": "b4jda1zv9",
+      "status": "completed"
+    },
+    {
+      "n": 2,
+      "experiment": "lab 1h \u00d7 365d \u00d7 BTC/ETH/SOL",
+      "task_id": "b3snhtczz",
+      "status": "running"
+    }
+  ]
+}
