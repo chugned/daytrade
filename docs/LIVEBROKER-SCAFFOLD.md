@@ -75,29 +75,33 @@ is directly comparable to "paper" PnL.
    partial or inconsistent combination. 16 tests cover every
    permutation. Single-line diffs cannot enable live trading.
 
-3. ⏳ **Wire LiveBroker into the Observer engine** — DEFERRED.
+3. ✅ **Wire LiveBroker into the Observer engine** — done.
    Current Observer writes trade records straight to the SQLite DB
    via ``db.insert_paper_trade`` / ``db.close_paper_trade``. It
    does *not* go through PaperBroker, so swapping in LiveBroker
    isn't a one-line change — it's a careful refactor that touches
    the live engine that is currently profitable.
 
-   Plan for step 3:
-   - Introduce a `BrokerProtocol` whose interface is what the
-     Observer's ``_open_position`` and ``_close_position`` actually
-     need (a tiny surface).
-   - Default to a thin ``DBPaperBroker`` adapter that wraps the
-     current direct-DB code (so existing behaviour is bit-for-bit
-     unchanged).
-   - Optional ``broker: BrokerProtocol`` parameter on ``Observer``;
-     when ``None`` the default ``DBPaperBroker`` is used.
-   - Tests against the current observatory cycle to prove the
-     refactor is behaviour-preserving.
-   - Then a new ``LiveBrokerAdapter`` that routes through the
-     ``LiveBroker``+``BinanceExchange`` chain.
+   What landed:
+   - ``daytrade.observatory.trading_broker.TradingBroker`` Protocol
+     — two methods, ``open_long`` and ``close_long``. Tiny surface.
+   - ``DBPaperBroker``: thin adapter that wraps the current direct-DB
+     code. Bit-for-bit equivalent to the pre-refactor Observer; the
+     ``open`` writes the requested entry, ``close`` runs the exact
+     same arithmetic (gross / fee / pnl / slippage) and writes the
+     same SQLite row.
+   - ``LiveBrokerAdapter``: routes through ``daytrade.live.LiveBroker``
+     + ``BinanceExchange``. Records the ACTUAL fill price + actual fee
+     in the same observatory DB schema, so the dashboard keeps working.
+   - ``Observer.__init__`` accepts ``broker=None``; defaults to
+     ``DBPaperBroker(db, fee_bps=config.risk.fee_bps)``. The
+     ``_maybe_open_position`` and ``_manage_positions`` methods now
+     delegate to ``self._broker``. Exceptions from the broker do not
+     crash the cycle — the trade is refused/kept-open and logged.
+   - 8 trading-broker tests + the full pre-existing observatory tests
+     (which all still pass) prove the refactor is behaviour-preserving.
 
-   This is a single follow-up branch. Don't break what's already
-   profitable.
+   **520 tests pass on the LiveBroker-Scaffold branch.**
 
 4. **Shadow mode end-to-end smoke** — after step 3, run the engine
    for 7 days with the real ``BinanceExchange`` (``writes_enabled=

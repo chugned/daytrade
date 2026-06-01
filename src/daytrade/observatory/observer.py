@@ -94,6 +94,7 @@ class Observer:
         feed: Optional[LiveMockFeed] = None,
         model=None,
         learning_session=None,
+        broker=None,
     ) -> None:
         self.config = config
         self.watchlist_config = watchlist_config
@@ -105,6 +106,17 @@ class Observer:
             db=self.db, allow_network=config.runtime.allow_network)
         # Optional 30-day learning session (set by `daytrade learn`).
         self.learning_session = learning_session
+        # Trading broker — paper by default (writes straight to DB,
+        # behaviour identical to pre-refactor). Pass a LiveBrokerAdapter
+        # to route through a real exchange. The Observer doesn't care
+        # which it is.
+        if broker is None:
+            from .trading_broker import DBPaperBroker
+            broker = DBPaperBroker(
+                self.db, fee_bps=self.config.risk.fee_bps,
+                slippage_rate=0.0004,
+            )
+        self._broker = broker
 
         self._run_id: Optional[int] = None
         self._cycle = 0
@@ -636,19 +648,31 @@ class Observer:
                                self.config.risk)
         if not sizing.is_tradeable:
             return
-        trade_id = self.db.insert_paper_trade(
-            symbol=symbol, side=Side.BUY.value, quantity=sizing.quantity,
-            entry_price=decision.entry, stop=decision.stop,
-            target=decision.target, fees=0.0, slippage=0.0, pnl=0.0)
+        try:
+            opened = self._broker.open_long(
+                symbol=symbol,
+                quantity=sizing.quantity,
+                entry_price=decision.entry,
+                stop=decision.stop,
+                target=decision.target,
+                timestamp=now,
+            )
+        except Exception as exc:  # noqa: BLE001 - one failed trade must not
+            # crash the cycle; live brokers can fail for many reasons.
+            _log.warning("broker.open_long failed for %s: %s", symbol, exc)
+            self._activity(f"broker open refused {symbol}", str(exc),
+                           level="warning")
+            return
         self._open[symbol] = {
-            "trade_id": trade_id, "qty": sizing.quantity,
-            "entry": decision.entry, "stop": decision.stop,
+            "trade_id": opened.trade_id, "qty": opened.fill_quantity,
+            "entry": opened.fill_price, "stop": decision.stop,
             "target": decision.target, "opened_cycle": self._cycle,
         }
         self._activity(f"paper trade opened: {symbol}",
-                       f"qty {sizing.quantity:.4f} @ {decision.entry:.4f} (sim)")
+                       f"qty {opened.fill_quantity:.4f} @ "
+                       f"{opened.fill_price:.4f} (sim)")
         _log.info("paper-opened %s qty=%.6f entry=%.4f (sim)",
-                  symbol, sizing.quantity, decision.entry)
+                  symbol, opened.fill_quantity, opened.fill_price)
         try:
             self._notify.notify(
                 f"Paper trade opened — {symbol}",
@@ -676,13 +700,25 @@ class Observer:
             if exit_price is None:
                 continue
             qty = pos["qty"]
-            gross = (exit_price - pos["entry"]) * qty
-            fee = (exit_price + pos["entry"]) * qty * \
-                self.config.risk.fee_bps / 10_000.0
-            pnl = gross - fee
-            slippage = exit_price * 0.0004 * qty
-            self.db.close_paper_trade(pos["trade_id"], exit_price=exit_price,
-                                      pnl=pnl, fees=fee, slippage=slippage)
+            try:
+                close_info = self._broker.close_long(
+                    trade_id=pos["trade_id"],
+                    symbol=symbol,
+                    quantity=qty,
+                    entry_price=pos["entry"],
+                    exit_price=exit_price,
+                    timestamp=now,
+                )
+            except Exception as exc:  # noqa: BLE001 — fail-closed: keep the
+                # position open and surface the error rather than losing
+                # track of an in-flight trade.
+                _log.error("broker.close_long failed for %s: %s",
+                           symbol, exc)
+                self._activity(f"broker close failed {symbol}", str(exc),
+                               level="error")
+                continue
+            pnl = close_info.pnl
+            exit_price = close_info.fill_price  # live brokers may differ
             self._risk.register_trade_close(pnl, self._cycle)
             del self._open[symbol]
             closed += 1
