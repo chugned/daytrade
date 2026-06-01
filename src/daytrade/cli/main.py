@@ -554,6 +554,11 @@ def shadow(
         help="Starting USDT for the MockExchange writer (only used when "
              "credentials are NOT provided; otherwise the real Binance "
              "balance overrides this)."),
+    db_path: Optional[str] = typer.Option(
+        None,
+        help="Path to the shadow DB. Defaults to "
+             "artifacts/observatory-shadow.db so the shadow ledger is "
+             "kept SEPARATE from the existing paper ledger."),
 ) -> None:
     """Run the engine in SHADOW MODE — real Binance reads, fake order writes.
 
@@ -640,7 +645,13 @@ def shadow(
     live_broker = LiveBroker(
         LiveConfig(dry_run=True), shadow_exchange,
     )
-    db = ObservatoryDB()
+    # Keep the shadow ledger separate from the live paper ledger so
+    # the comparison dashboard can show them side-by-side and so a bad
+    # shadow run never contaminates real paper history.
+    shadow_db_path = (Path(db_path) if db_path
+                      else DEFAULT_DB_PATH.with_name("observatory-shadow.db"))
+    _console.print(f"Shadow DB: {shadow_db_path}")
+    db = ObservatoryDB(path=shadow_db_path)
     adapter = LiveBrokerAdapter(live_broker, db)
 
     _console.print(
@@ -665,12 +676,105 @@ def shadow(
     )
     _console.print(
         f"Observing {len(observer.watchlist_config.symbols)} symbols "
-        f"every {interval}s. DB: {DEFAULT_DB_PATH}\n")
+        f"every {interval}s.\n")
     try:
         observer.run_forever(interval)
     finally:
         _shadow_lock.release()
     _console.print("\n[green]Shadow run stopped cleanly.[/green]")
+
+
+@app.command(name="shadow-compare")
+def shadow_compare(
+    paper_db: str = typer.Option(
+        str(DEFAULT_DB_PATH),
+        help="Path to the existing paper observatory DB."),
+    shadow_db: str = typer.Option(
+        str(DEFAULT_DB_PATH.with_name("observatory-shadow.db")),
+        help="Path to the shadow DB written by 'daytrade shadow'."),
+) -> None:
+    """Side-by-side ledger: existing paper bot vs shadow-mode bot.
+
+    Reads both observatory DBs and renders closed-trade totals plus
+    recent trades for visual eyeball comparison. If shadow PnL tracks
+    paper PnL within ±15% over a meaningful sample, the live wiring is
+    consistent enough to proceed to the gate-flip checklist in
+    docs/SHADOW-MODE.md.
+
+    Read-only. Touches no files outside the two SQLite paths.
+    """
+    from pathlib import Path as _P
+    from datetime import datetime as _dt
+    paths = {"PAPER": _P(paper_db), "SHADOW": _P(shadow_db)}
+    summaries: "dict[str, dict]" = {}
+    recent: "dict[str, list]" = {}
+    for name, p in paths.items():
+        if not p.exists():
+            _console.print(f"[yellow]{name} DB missing:[/yellow] {p}")
+            continue
+        db = ObservatoryDB(path=p)
+        closed = db.closed_paper_trades(limit=10000)
+        opens = db.open_paper_trades()
+        pnl = sum((t.get("pnl") or 0.0) for t in closed)
+        wins = sum(1 for t in closed if (t.get("pnl") or 0.0) > 0)
+        n = len(closed)
+        fees = sum((t.get("fees") or 0.0) for t in closed)
+        slip = sum((t.get("slippage") or 0.0) for t in closed)
+        summaries[name] = {
+            "closed": n, "open": len(opens), "pnl": pnl,
+            "win_rate": (wins / n * 100) if n else 0.0,
+            "fees": fees, "slip": slip,
+        }
+        recent[name] = closed[-5:]  # newest 5
+
+    if not summaries:
+        _console.print("[red]Nothing to compare — both DBs missing.[/red]")
+        raise typer.Exit(code=1)
+
+    _console.rule("[bold]Shadow vs Paper — side-by-side ledger")
+    _console.print(f"{'Metric':<22}{'PAPER':>14}{'SHADOW':>14}{'Δ':>12}")
+    _console.print("-" * 62)
+    for label, key in (("Closed trades",   "closed"),
+                       ("Open trades",     "open"),
+                       ("Win rate %",      "win_rate"),
+                       ("Total PnL (USDT)","pnl"),
+                       ("Fees paid",       "fees"),
+                       ("Slippage",        "slip")):
+        p_val = summaries.get("PAPER",  {}).get(key)
+        s_val = summaries.get("SHADOW", {}).get(key)
+        p_s = f"{'-':>14}" if p_val is None else f"{p_val:>14.2f}"
+        s_s = f"{'-':>14}" if s_val is None else f"{s_val:>14.2f}"
+        if p_val is not None and s_val is not None and key in (
+                "pnl", "win_rate", "fees", "slip"):
+            d = s_val - p_val
+            d_s = f"{d:>+12.2f}"
+        else:
+            d_s = f"{'':>12}"
+        _console.print(f"{label:<22}{p_s}{s_s}{d_s}")
+
+    if summaries.get("PAPER") and summaries.get("SHADOW"):
+        p_pnl = summaries["PAPER"]["pnl"]
+        s_pnl = summaries["SHADOW"]["pnl"]
+        if abs(p_pnl) > 1e-9:
+            rel = (s_pnl - p_pnl) / abs(p_pnl) * 100
+            verdict = ("WITHIN ±15%" if abs(rel) <= 15
+                       else "OUTSIDE ±15% — investigate")
+            _console.print(f"\nShadow vs Paper PnL deviation: "
+                           f"{rel:+.1f}%  →  [bold]{verdict}[/bold]")
+
+    for name, trades in recent.items():
+        if not trades:
+            continue
+        _console.rule(f"[bold]Last 5 closed — {name}")
+        for t in trades:
+            ts = t.get("ts_close") or t.get("ts") or ""
+            sym = t.get("symbol", "?")
+            entry = t.get("entry_price") or 0.0
+            ex = t.get("exit_price") or 0.0
+            pnl = t.get("pnl") or 0.0
+            _console.print(f"  {ts}  {sym:<10}  "
+                            f"entry {entry:>10.4f}  exit {ex:>10.4f}  "
+                            f"PnL {pnl:>+8.2f}")
 
 
 @app.command()

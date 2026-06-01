@@ -120,6 +120,62 @@ def create_app(db_path: Path | str = DEFAULT_DB_PATH) -> FastAPI:
     def paper() -> Any:
         return _safe(lambda d: d.paper())
 
+    @app.get("/api/shadow-vs-paper")
+    def shadow_vs_paper() -> Any:
+        """Side-by-side ledger of shadow-mode trades vs paper trades.
+
+        Reads BOTH the paper DB (this dashboard's main DB) and the
+        shadow DB (default `observatory-shadow.db` next to the paper
+        DB). Returns aggregates + last-5 trades from each. If shadow
+        DB does not exist, only paper is returned."""
+        from pathlib import Path as _P
+
+        shadow_path = _P(db_path).with_name("observatory-shadow.db")
+
+        def _summary(p) -> dict:
+            if not _P(p).exists():
+                return {"available": False, "path": str(p)}
+            d = DashboardData(p)
+            try:
+                closed = d.db.closed_paper_trades(limit=10000)
+                opens = d.db.open_paper_trades()
+            finally:
+                d.close()
+            pnl = sum((t.get("pnl") or 0.0) for t in closed)
+            wins = sum(1 for t in closed if (t.get("pnl") or 0.0) > 0)
+            n = len(closed)
+            return {
+                "available": True,
+                "path": str(p),
+                "closed_trades": n,
+                "open_trades": len(opens),
+                "win_rate": (wins / n * 100) if n else 0.0,
+                "total_pnl": pnl,
+                "fees_paid": sum((t.get("fees") or 0.0) for t in closed),
+                "slippage": sum((t.get("slippage") or 0.0) for t in closed),
+                "last_5_trades": closed[-5:],
+            }
+
+        paper_sum = _summary(db_path)
+        shadow_sum = _summary(shadow_path)
+        delta = None
+        if paper_sum.get("available") and shadow_sum.get("available"):
+            p_pnl = paper_sum["total_pnl"]
+            s_pnl = shadow_sum["total_pnl"]
+            if abs(p_pnl) > 1e-9:
+                rel_pct = (s_pnl - p_pnl) / abs(p_pnl) * 100
+                delta = {
+                    "pnl_abs": s_pnl - p_pnl,
+                    "pnl_rel_pct": rel_pct,
+                    "verdict": ("within_15pct" if abs(rel_pct) <= 15
+                                else "outside_15pct_investigate"),
+                }
+        return {
+            "paper": paper_sum,
+            "shadow": shadow_sum,
+            "delta": delta,
+        }
+
     @app.get("/api/risk")
     def risk() -> Any:
         return _safe(lambda d: d.risk())
