@@ -58,8 +58,7 @@ class ApprovalDecision:
     reason: str
 
 
-def render_approval_card(proposal: TradeProposal,
-                         console: Optional[Console] = None) -> None:
+def render_approval_card(proposal: TradeProposal, console: Optional[Console] = None) -> None:
     """Print the full trade card the operator must review."""
     console = console or Console()
     mode = proposal.execution_mode.upper()
@@ -81,23 +80,27 @@ def render_approval_card(proposal: TradeProposal,
     table.add_row("Expected slippage", f"{proposal.expected_slippage_cost:,.2f}")
     table.add_row("Expected fee", f"{proposal.expected_fee:,.2f}")
 
-    console.print(Panel(table, title="⚖  TRADE PROPOSAL — manual approval",
-                        border_style="cyan"))
+    console.print(Panel(table, title="⚖  TRADE PROPOSAL — manual approval", border_style="cyan"))
 
     if proposal.reasoning:
-        console.print(Panel("\n".join(f"• {r}" for r in proposal.reasoning),
-                            title="Reason", border_style="blue"))
+        console.print(
+            Panel(
+                "\n".join(f"• {r}" for r in proposal.reasoning), title="Reason", border_style="blue"
+            )
+        )
 
     liq = proposal.liquidity_warning or "none"
     liq_style = "yellow" if proposal.liquidity_warning else "green"
-    console.print(Panel(f"Liquidity warning: {liq}",
-                        border_style=liq_style))
+    console.print(Panel(f"Liquidity warning: {liq}", border_style=liq_style))
 
     if proposal.kill_switch_active:
-        console.print(Panel(
-            "\n".join(f"• {r}" for r in proposal.kill_switch_reasons),
-            title="⚠ KILL SWITCH ACTIVE — trade will be blocked",
-            border_style="red"))
+        console.print(
+            Panel(
+                "\n".join(f"• {r}" for r in proposal.kill_switch_reasons),
+                title="⚠ KILL SWITCH ACTIVE — trade will be blocked",
+                border_style="red",
+            )
+        )
     else:
         console.print(Panel("Kill switch: clear", border_style="green"))
 
@@ -131,8 +134,8 @@ def request_approval(
 
     phrase = config.confirmation_phrase
     console.print(
-        f"\n[bold]TYPE {phrase} TO PAPER-EXECUTE[/bold] "
-        f"(anything else cancels): ", end="")
+        f"\n[bold]TYPE {phrase} TO PAPER-EXECUTE[/bold] " f"(anything else cancels): ", end=""
+    )
     try:
         reply = input_fn("")
     except (EOFError, KeyboardInterrupt):

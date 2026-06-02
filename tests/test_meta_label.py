@@ -10,11 +10,13 @@ from daytrade.ml.meta import MetaLabelModel
 
 
 def _frame(closes):
-    return pd.DataFrame({
-        "high": [c * 1.001 for c in closes],
-        "low": [c * 0.999 for c in closes],
-        "close": list(closes),
-    })
+    return pd.DataFrame(
+        {
+            "high": [c * 1.001 for c in closes],
+            "low": [c * 0.999 for c in closes],
+            "close": list(closes),
+        }
+    )
 
 
 def test_triple_barrier_labels_a_rising_series_as_wins():
@@ -38,17 +40,18 @@ def test_triple_barrier_labels_a_falling_series_as_losses():
 def test_triple_barrier_timeout_and_trailing_bars():
     """A flat series times out early bars (0) and leaves trailing bars NaN."""
     frame = _frame([100.0] * 40)
-    sd = pd.Series([5.0] * 40)   # barriers far away — never hit
+    sd = pd.Series([5.0] * 40)  # barriers far away — never hit
     td = pd.Series([5.0] * 40)
     labels = triple_barrier_label(frame, sd, td, max_hold=8)
-    assert labels.iloc[0] == 0.0          # full vertical reached -> timeout
-    assert pd.isna(labels.iloc[-1])       # no future -> unlabelled
+    assert labels.iloc[0] == 0.0  # full vertical reached -> timeout
+    assert pd.isna(labels.iloc[-1])  # no future -> unlabelled
 
 
 def test_meta_model_trains_and_predicts(config):
     """The meta-model trains on triple-barrier outcomes and scores a bar."""
-    candles = generate_random_walk("BTCUSDT", n_bars=500, start_price=100.0,
-                                   drift=0.0003, volatility=0.006, seed=5)
+    candles = generate_random_walk(
+        "BTCUSDT", n_bars=500, start_price=100.0, drift=0.0003, volatility=0.006, seed=5
+    )
     model = MetaLabelModel()
     assert model.predict_win_proba(candles, config) is None  # untrained
 
@@ -67,8 +70,7 @@ def test_meta_model_trains_and_predicts(config):
 
 def test_meta_model_untrained_on_too_little_history(config):
     """Too few candles -> training declines rather than guessing."""
-    short = generate_random_walk("BTCUSDT", n_bars=80, start_price=100.0,
-                                 seed=3)
+    short = generate_random_walk("BTCUSDT", n_bars=80, start_price=100.0, seed=3)
     model = MetaLabelModel()
     assert model.train([short], config) is None
     assert not model.is_trained

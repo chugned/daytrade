@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import json
 import os
-from collections import defaultdict, deque
+from collections import defaultdict
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 HISTORY_PATH = REPO_ROOT / "data" / "ram_history.jsonl"
@@ -51,8 +52,7 @@ def _trim_if_needed() -> None:
         pass
 
 
-def by_bot(bot_names: List[str], window_minutes: int = 60
-           ) -> Dict[str, List[Dict[str, Any]]]:
+def by_bot(bot_names: List[str], window_minutes: int = 60) -> Dict[str, List[Dict[str, Any]]]:
     """Return recent samples grouped by bot name, oldest first per bot.
 
     A bot card reads its own series and renders a sparkline.
@@ -60,9 +60,7 @@ def by_bot(bot_names: List[str], window_minutes: int = 60
     if not HISTORY_PATH.exists():
         return {n: [] for n in bot_names}
 
-    cutoff = (
-        datetime.now(timezone.utc).timestamp() - window_minutes * 60
-    )
+    cutoff = datetime.now(timezone.utc).timestamp() - window_minutes * 60
     series: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     try:
         with HISTORY_PATH.open("r", encoding="utf-8") as fh:
@@ -78,20 +76,20 @@ def by_bot(bot_names: List[str], window_minutes: int = 60
                 if not ts:
                     continue
                 try:
-                    ts_epoch = datetime.fromisoformat(
-                        ts.replace("Z", "+00:00")
-                    ).timestamp()
+                    ts_epoch = datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
                 except ValueError:
                     continue
                 if ts_epoch < cutoff:
                     continue
                 bot = s.get("bot")
                 if bot in bot_names:
-                    series[bot].append({
-                        "ts": ts,
-                        "rss_mb": s.get("rss_mb"),
-                        "pid": s.get("pid"),
-                    })
+                    series[bot].append(
+                        {
+                            "ts": ts,
+                            "rss_mb": s.get("rss_mb"),
+                            "pid": s.get("pid"),
+                        }
+                    )
     except OSError:
         pass
     return {n: series.get(n, []) for n in bot_names}

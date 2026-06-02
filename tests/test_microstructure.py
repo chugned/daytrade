@@ -14,9 +14,17 @@ from daytrade.models.market import OHLCV, OrderBookLevel
 def _flat_candles(n=60, price=30_000.0):
     """A perfectly flat (zero-slope) candle series."""
     t0 = datetime(2026, 5, 17, tzinfo=timezone.utc)
-    return [OHLCV(symbol="BTCUSDT", timestamp=t0 + timedelta(minutes=i),
-                  open=price, high=price, low=price, close=price)
-            for i in range(n)]
+    return [
+        OHLCV(
+            symbol="BTCUSDT",
+            timestamp=t0 + timedelta(minutes=i),
+            open=price,
+            high=price,
+            low=price,
+            close=price,
+        )
+        for i in range(n)
+    ]
 
 
 def test_depth_imbalance_balanced_book():

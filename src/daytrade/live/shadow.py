@@ -68,14 +68,14 @@ class ShadowExchange:
             real_balance = float(reader.get_balance("USDT"))
             self._writer.inject_balance("USDT", real_balance)
             _log.info(
-                "ShadowExchange initialised: real USDT balance = %.2f "
-                "synced into MockExchange",
+                "ShadowExchange initialised: real USDT balance = %.2f " "synced into MockExchange",
                 real_balance,
             )
         except Exception as exc:  # noqa: BLE001 — degrade gracefully
             _log.warning(
                 "ShadowExchange could not sync starting balance (%s); "
-                "MockExchange retains its default", exc,
+                "MockExchange retains its default",
+                exc,
             )
 
     # -- reads come from the real exchange ----------------------------------
@@ -97,8 +97,9 @@ class ShadowExchange:
         try:
             real_orders = self._reader.list_open_orders(symbol)
         except Exception as exc:  # noqa: BLE001
-            _log.info("ShadowExchange: reader open-orders query failed "
-                      "(%s); using mock only", exc)
+            _log.info(
+                "ShadowExchange: reader open-orders query failed " "(%s); using mock only", exc
+            )
             real_orders = []
         mock_orders = self._writer.list_open_orders(symbol)
         return list(real_orders) + list(mock_orders)
@@ -109,14 +110,18 @@ class ShadowExchange:
         _log.info(
             "SHADOW place_market_order %s %s %.6f @~%.6f "
             "(clientOrderId=%s) — routed to MockExchange",
-            order.side.value, order.symbol, order.quantity,
-            order.reference_price, order.client_order_id,
+            order.side.value,
+            order.symbol,
+            order.quantity,
+            order.reference_price,
+            order.client_order_id,
         )
         return self._writer.place_market_order(order)
 
     def cancel_order(self, symbol: str, client_order_id: str) -> None:
         _log.info(
             "SHADOW cancel_order %s %s — routed to MockExchange",
-            symbol, client_order_id,
+            symbol,
+            client_order_id,
         )
         self._writer.cancel_order(symbol, client_order_id)

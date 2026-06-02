@@ -15,9 +15,12 @@ _T0 = datetime(2026, 5, 17, 12, 0, tzinfo=timezone.utc)
 
 def _populated_db(tmp_path):
     db_path = tmp_path / "obs.db"
-    obs = Observer(load_config(load_dotenv_file=False),
-                   WatchlistConfig(symbols=["BTCUSDT", "ETHUSDT"]),
-                   db=ObservatoryDB(db_path), feed=LiveMockFeed())
+    obs = Observer(
+        load_config(load_dotenv_file=False),
+        WatchlistConfig(symbols=["BTCUSDT", "ETHUSDT"]),
+        db=ObservatoryDB(db_path),
+        feed=LiveMockFeed(),
+    )
     obs.start()
     for k in range(3):
         obs.run_once(_T0 + timedelta(minutes=20 * k))
@@ -66,8 +69,7 @@ def test_dashboard_symbol_detail(tmp_path):
 
 def test_dashboard_accuracy_paper_risk(tmp_path):
     client = TestClient(create_app(_populated_db(tmp_path)))
-    for endpoint in ("/api/accuracy", "/api/paper", "/api/risk",
-                     "/api/safety-history"):
+    for endpoint in ("/api/accuracy", "/api/paper", "/api/risk", "/api/safety-history"):
         resp = client.get(endpoint)
         assert resp.status_code == 200
         assert resp.json() is not None
@@ -83,16 +85,21 @@ def test_dashboard_empty_db_does_not_crash(tmp_path):
 
 # --- learning observatory endpoints ----------------------------------------
 
+
 def _learning_db(tmp_path):
     from daytrade.observatory import LearningSession
+
     db_path = tmp_path / "learn.db"
     db = ObservatoryDB(db_path)
-    session = LearningSession.resume_or_create(db, target_days=30,
-                                               interval_seconds=300)
+    session = LearningSession.resume_or_create(db, target_days=30, interval_seconds=300)
     session.start = _T0
-    obs = Observer(load_config(load_dotenv_file=False),
-                   WatchlistConfig(symbols=["BTCUSDT", "ETHUSDT"]),
-                   db=db, feed=LiveMockFeed(), learning_session=session)
+    obs = Observer(
+        load_config(load_dotenv_file=False),
+        WatchlistConfig(symbols=["BTCUSDT", "ETHUSDT"]),
+        db=db,
+        feed=LiveMockFeed(),
+        learning_session=session,
+    )
     obs.start()
     for k in range(3):
         obs.run_once(_T0 + timedelta(hours=8 * k))
@@ -104,10 +111,18 @@ def _learning_db(tmp_path):
 
 def test_dashboard_learning_endpoints(tmp_path):
     client = TestClient(create_app(_learning_db(tmp_path)))
-    for endpoint in ("/api/progress", "/api/regimes", "/api/calibration",
-                     "/api/readiness", "/api/learning", "/api/activity",
-                     "/api/status", "/api/daily-reports", "/api/predictions",
-                     "/api/paper-trades"):
+    for endpoint in (
+        "/api/progress",
+        "/api/regimes",
+        "/api/calibration",
+        "/api/readiness",
+        "/api/learning",
+        "/api/activity",
+        "/api/status",
+        "/api/daily-reports",
+        "/api/predictions",
+        "/api/paper-trades",
+    ):
         resp = client.get(endpoint)
         assert resp.status_code == 200, endpoint
         assert resp.json() is not None
@@ -157,8 +172,7 @@ def test_dashboard_gates_endpoint(tmp_path):
     """The /api/gates endpoint summarises the Phase 1-4 strategy gates."""
     client = TestClient(create_app(tmp_path / "obs.db"))
     body = client.get("/api/gates").json()
-    for key in ("regime_blocks", "calibration_blocks", "meta_blocks",
-                "meta_status"):
+    for key in ("regime_blocks", "calibration_blocks", "meta_blocks", "meta_status"):
         assert key in body
 
 
@@ -209,8 +223,7 @@ def test_dashboard_password_gate(tmp_path, monkeypatch):
 
     # Wrong password -> 401.
     bad = base64.b64encode(b"user:nope").decode()
-    assert client.get("/api/health",
-                      headers={"Authorization": f"Basic {bad}"}).status_code == 401
+    assert client.get("/api/health", headers={"Authorization": f"Basic {bad}"}).status_code == 401
 
     # Correct password (any username) -> 200.
     good = base64.b64encode(b"user:s3cret").decode()

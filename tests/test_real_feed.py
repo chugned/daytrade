@@ -6,19 +6,29 @@ They verify parsing, caching and the feed-selection logic.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-import pytest
-
-from daytrade.config import WatchlistConfig, load_config
+from daytrade.config import load_config
 from daytrade.observatory.real_feed import RealMarketFeed, _minute_ms, build_feed
 
 _T = datetime(2026, 5, 17, 12, 0, tzinfo=timezone.utc)
 
 
 def _kline(open_ms, o, h, l, c, v):
-    return [open_ms, str(o), str(h), str(l), str(c), str(v),
-            open_ms + 59_999, "0", 10, "0", "0", "0"]
+    return [
+        open_ms,
+        str(o),
+        str(h),
+        str(l),
+        str(c),
+        str(v),
+        open_ms + 59_999,
+        "0",
+        10,
+        "0",
+        "0",
+        "0",
+    ]
 
 
 class _MockFeed(RealMarketFeed):
@@ -36,14 +46,17 @@ class _MockFeed(RealMarketFeed):
                 start = params["startTime"]
                 return [_kline(start, 100, 105, 98, 101.5, 9)]
             base = int(_T.timestamp() // 60) * 60_000
-            return [_kline(base + i * 60_000, 100 + i, 106 + i, 97 + i,
-                           101 + i, 5 + i) for i in range(limit)]
+            return [
+                _kline(base + i * 60_000, 100 + i, 106 + i, 97 + i, 101 + i, 5 + i)
+                for i in range(limit)
+            ]
         if path == "/api/v3/depth":
-            return {"bids": [["100.0", "2.0"], ["99.5", "3.0"]],
-                    "asks": [["100.5", "1.5"], ["101.0", "4.0"]]}
+            return {
+                "bids": [["100.0", "2.0"], ["99.5", "3.0"]],
+                "asks": [["100.5", "1.5"], ["101.0", "4.0"]],
+            }
         if path == "/api/v3/ticker/24hr":
-            return {"symbol": params["symbol"], "lastPrice": "100.25",
-                    "quoteVolume": "123456789.0"}
+            return {"symbol": params["symbol"], "lastPrice": "100.25", "quoteVolume": "123456789.0"}
         raise AssertionError(f"unexpected path {path}")
 
 
@@ -98,10 +111,12 @@ def test_real_feed_source_label():
 
 # --- feed selection --------------------------------------------------------
 
+
 def test_build_feed_offline_is_simulator():
     cfg = load_config(load_dotenv_file=False)
     assert cfg.runtime.allow_network is False
     from daytrade.observatory.feed import LiveMockFeed
+
     assert isinstance(build_feed(cfg), LiveMockFeed)
 
 

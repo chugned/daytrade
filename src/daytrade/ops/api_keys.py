@@ -35,9 +35,12 @@ _BINANCE_BASE = "https://api.binance.com"
 class WithdrawalPermissionForbidden(RuntimeError):
     """Raised when an API key reports withdrawal permission enabled."""
 
-    def __init__(self, message: str = "API key has withdrawal permission "
-                 "enabled — refuse to use it. Disable withdrawals on the key "
-                 "before retrying.") -> None:
+    def __init__(
+        self,
+        message: str = "API key has withdrawal permission "
+        "enabled — refuse to use it. Disable withdrawals on the key "
+        "before retrying.",
+    ) -> None:
         super().__init__(message)
 
 
@@ -56,22 +59,26 @@ class KeyPermissions:
     @property
     def is_trade_only(self) -> bool:
         """True iff trading is allowed AND withdrawal-style flags are all off."""
-        return (self.can_trade
-                and not self.can_withdraw
-                and not self.can_internal_transfer
-                and not self.enable_universal_transfer)
+        return (
+            self.can_trade
+            and not self.can_withdraw
+            and not self.can_internal_transfer
+            and not self.enable_universal_transfer
+        )
 
 
 def _sign(secret: str, query_string: str) -> str:
-    return hmac.new(secret.encode("utf-8"),
-                    query_string.encode("utf-8"),
-                    hashlib.sha256).hexdigest()
+    return hmac.new(
+        secret.encode("utf-8"), query_string.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
 
 
-def inspect_key(api_key: str, api_secret: str,
-                base_url: str = _BINANCE_BASE,
-                client: Optional[httpx.Client] = None,
-                ) -> KeyPermissions:
+def inspect_key(
+    api_key: str,
+    api_secret: str,
+    base_url: str = _BINANCE_BASE,
+    client: Optional[httpx.Client] = None,
+) -> KeyPermissions:
     """Query Binance's API-restrictions endpoint and return the flags.
 
     Uses the signed ``GET /sapi/v1/account/apiRestrictions`` endpoint.
@@ -102,11 +109,9 @@ def inspect_key(api_key: str, api_secret: str,
         can_trade=bool(data.get("enableSpotAndMarginTrading", False)),
         can_withdraw=bool(data.get("enableWithdrawals", False)),
         can_internal_transfer=bool(data.get("enableInternalTransfer", False)),
-        enable_spot_and_margin_trading=bool(
-            data.get("enableSpotAndMarginTrading", False)),
+        enable_spot_and_margin_trading=bool(data.get("enableSpotAndMarginTrading", False)),
         enable_futures=bool(data.get("enableFutures", False)),
-        enable_universal_transfer=bool(
-            data.get("permitsUniversalTransfer", False)),
+        enable_universal_transfer=bool(data.get("permitsUniversalTransfer", False)),
     )
 
 
@@ -120,11 +125,14 @@ def assert_trade_only(perms: KeyPermissions) -> None:
         raise WithdrawalPermissionForbidden(
             "API key has enableWithdrawals=true — refuse. Disable withdrawals "
             "in the Binance API settings, IP-allowlist the key to your "
-            "trading server, then retry.")
+            "trading server, then retry."
+        )
     if perms.can_internal_transfer or perms.enable_universal_transfer:
         raise WithdrawalPermissionForbidden(
             "API key allows internal/universal transfers — same risk as "
-            "withdrawal. Disable those flags and retry.")
+            "withdrawal. Disable those flags and retry."
+        )
     if not perms.can_trade:
         raise WithdrawalPermissionForbidden(
-            "API key does not have spot trading enabled — cannot use it.")
+            "API key does not have spot trading enabled — cannot use it."
+        )

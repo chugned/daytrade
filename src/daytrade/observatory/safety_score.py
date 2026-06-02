@@ -30,16 +30,16 @@ def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
 class SafetyInputs:
     """Raw market signals fed into the safety score (one symbol or aggregate)."""
 
-    trend_strength: float        # |normalized trend slope|, ~0..1+
-    volatility: float            # realized per-bar volatility, fraction
-    liquidity_notional: float    # USD notional resting in the book
-    spread_bps: float            # top-of-book spread, basis points
-    imbalance: float             # orderbook imbalance, -1..1
-    chop: bool                   # chop zone detected
-    slippage_estimate_bps: float # expected adverse slippage, bps
-    panic: bool                  # panic / systemic-stress regime
-    recent_accuracy: Optional[float] = None       # 0..1 directional accuracy
-    paper_drawdown_pct: float = 0.0               # 0..1 current drawdown
+    trend_strength: float  # |normalized trend slope|, ~0..1+
+    volatility: float  # realized per-bar volatility, fraction
+    liquidity_notional: float  # USD notional resting in the book
+    spread_bps: float  # top-of-book spread, basis points
+    imbalance: float  # orderbook imbalance, -1..1
+    chop: bool  # chop zone detected
+    slippage_estimate_bps: float  # expected adverse slippage, bps
+    panic: bool  # panic / systemic-stress regime
+    recent_accuracy: Optional[float] = None  # 0..1 directional accuracy
+    paper_drawdown_pct: float = 0.0  # 0..1 current drawdown
     prediction_reliability: Optional[float] = None  # 0..1 confidence calibration
 
 
@@ -47,10 +47,10 @@ class SafetyInputs:
 class SafetyAssessment:
     """The computed safety verdict."""
 
-    score: float                 # 0-100
-    status: str                  # SAFE_TO_OBSERVE | WAIT | HIGH_RISK | UNSAFE
-    condition: str               # CALM | OPPORTUNISTIC | MIXED | ...
-    headline: str                # one-line plain-language reason
+    score: float  # 0-100
+    status: str  # SAFE_TO_OBSERVE | WAIT | HIGH_RISK | UNSAFE
+    condition: str  # CALM | OPPORTUNISTIC | MIXED | ...
+    headline: str  # one-line plain-language reason
     reasons: List[str] = field(default_factory=list)
     breakdown: Dict[str, float] = field(default_factory=dict)
 
@@ -72,8 +72,10 @@ def band_label(score: float) -> str:
         "UNSAFE": "unsafe conditions",
         "HIGH_RISK": "high-risk conditions",
         "WAIT": "wait / mixed conditions",
-    }.get(status_for_score(score),
-          "strong paper conditions" if score > 80 else "acceptable paper conditions")
+    }.get(
+        status_for_score(score),
+        "strong paper conditions" if score > 80 else "acceptable paper conditions",
+    )
 
 
 def _liquidity_score(notional: float) -> float:
@@ -125,8 +127,7 @@ def compute_safety_score(inputs: SafetyInputs) -> SafetyAssessment:
     if inputs.recent_accuracy is not None:
         breakdown["model_accuracy"] = _clamp(inputs.recent_accuracy * 200.0 - 50.0)
     if inputs.prediction_reliability is not None:
-        breakdown["prediction_reliability"] = _clamp(
-            inputs.prediction_reliability * 100.0)
+        breakdown["prediction_reliability"] = _clamp(inputs.prediction_reliability * 100.0)
     breakdown["drawdown"] = _clamp(100.0 - inputs.paper_drawdown_pct * 400.0)
 
     score = sum(breakdown.values()) / len(breakdown)
@@ -159,8 +160,12 @@ def compute_safety_score(inputs: SafetyInputs) -> SafetyAssessment:
     headline = f"{condition} — {band_label(score)}"
 
     return SafetyAssessment(
-        score=score, status=status, condition=condition,
-        headline=headline, reasons=reasons, breakdown=breakdown,
+        score=score,
+        status=status,
+        condition=condition,
+        headline=headline,
+        reasons=reasons,
+        breakdown=breakdown,
     )
 
 
@@ -174,8 +179,7 @@ def classify_condition(inputs: SafetyInputs, score: float) -> str:
         return "OVEREXTENDED"
     if inputs.chop:
         return "CHOPPY"
-    if (score >= 65 and inputs.trend_strength >= 0.35
-            and inputs.volatility <= 0.010):
+    if score >= 65 and inputs.trend_strength >= 0.35 and inputs.volatility <= 0.010:
         return "OPPORTUNISTIC"
     if score >= 60 and inputs.volatility <= 0.006:
         return "CALM"
@@ -189,8 +193,9 @@ def aggregate_safety(assessments: List[SafetyAssessment]) -> SafetyAssessment:
     worst symbol, because a market is only as safe as its weak points.
     """
     if not assessments:
-        return SafetyAssessment(50.0, "WAIT", "MIXED",
-                                "MIXED — no data yet", ["no symbols observed"], {})
+        return SafetyAssessment(
+            50.0, "WAIT", "MIXED", "MIXED — no data yet", ["no symbols observed"], {}
+        )
     scores = [a.score for a in assessments]
     total = len(assessments)
     mean = sum(scores) / total
@@ -201,8 +206,7 @@ def aggregate_safety(assessments: List[SafetyAssessment]) -> SafetyAssessment:
     # *severe* label (PANIC/ILLIQUID/OVEREXTENDED) only becomes the market-
     # wide headline when it affects a meaningful share of symbols. A couple
     # of thin names out of 35 do not make the whole market "illiquid".
-    severity = ["PANIC", "ILLIQUID", "OVEREXTENDED", "CHOPPY", "MIXED",
-                "CALM", "OPPORTUNISTIC"]
+    severity = ["PANIC", "ILLIQUID", "OVEREXTENDED", "CHOPPY", "MIXED", "CALM", "OPPORTUNISTIC"]
     severe = {"PANIC", "ILLIQUID", "OVEREXTENDED"}
     _severe_share_threshold = 0.30
 
@@ -228,8 +232,10 @@ def aggregate_safety(assessments: List[SafetyAssessment]) -> SafetyAssessment:
         elif n and c == condition:
             reasons.append(f"{n}/{total} symbols in {c}")
     return SafetyAssessment(
-        score=score, status=status, condition=condition,
+        score=score,
+        status=status,
+        condition=condition,
         headline=f"{condition} — {band_label(score)}",
-        reasons=reasons, breakdown={"mean": round(mean, 1),
-                                    "weakest": round(worst, 1)},
+        reasons=reasons,
+        breakdown={"mean": round(mean, 1), "weakest": round(worst, 1)},
     )

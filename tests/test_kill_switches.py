@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
-
 from daytrade.config.schema import RiskConfig
 from daytrade.risk.engine import RiskEngine
 
@@ -23,8 +21,9 @@ def _engine(**overrides) -> RiskEngine:
 # Daily loss limit
 # ---------------------------------------------------------------------------
 
+
 def test_daily_loss_limit_blocks_new_entries_once_breached():
-    risk = _engine(max_daily_loss_pct=0.05)         # 5% daily loss limit
+    risk = _engine(max_daily_loss_pct=0.05)  # 5% daily loss limit
     day_start = datetime(2026, 5, 31, 8, 0, tzinfo=timezone.utc)
     risk.observe_equity(day_start, 1000.0)
 
@@ -50,6 +49,7 @@ def test_daily_loss_limit_resets_at_the_day_rollover():
 # Weekly loss limit
 # ---------------------------------------------------------------------------
 
+
 def test_weekly_loss_limit_blocks_when_breached():
     risk = _engine(max_weekly_loss_pct=0.12)
     monday = datetime(2026, 5, 25, 8, 0, tzinfo=timezone.utc)
@@ -64,6 +64,7 @@ def test_weekly_loss_limit_blocks_when_breached():
 # ---------------------------------------------------------------------------
 # Max open positions
 # ---------------------------------------------------------------------------
+
 
 def test_max_open_positions_blocks_new_entry():
     risk = _engine(max_open_positions=3)
@@ -82,6 +83,7 @@ def test_max_open_positions_allows_below_cap():
 # ---------------------------------------------------------------------------
 # Post-loss cooldown
 # ---------------------------------------------------------------------------
+
 
 def test_post_loss_cooldown_blocks_new_entries_for_N_bars():
     risk = _engine(loss_cooldown_bars=20)
@@ -107,6 +109,7 @@ def test_winning_trade_does_not_start_a_cooldown():
 # Position sizing (per-coin notional cap)
 # ---------------------------------------------------------------------------
 
+
 def test_position_size_respects_notional_cap():
     risk = _engine(risk_per_trade=0.05, max_position_pct=0.25)
     sizing = risk.size(equity=1000.0, entry=100.0, stop=99.0)
@@ -126,13 +129,13 @@ def test_position_size_zero_when_entry_equals_stop():
 # Composite — multiple blocks at once
 # ---------------------------------------------------------------------------
 
+
 def test_multiple_blocks_are_all_reported():
     """When several limits fail simultaneously, evaluate_entry exposes them all."""
-    risk = _engine(max_daily_loss_pct=0.05, max_open_positions=3,
-                   loss_cooldown_bars=20)
+    risk = _engine(max_daily_loss_pct=0.05, max_open_positions=3, loss_cooldown_bars=20)
     day_start = datetime(2026, 5, 31, 8, 0, tzinfo=timezone.utc)
     risk.observe_equity(day_start, 1000.0)
-    risk.observe_equity(day_start + timedelta(hours=1), 900.0)   # -10%
+    risk.observe_equity(day_start + timedelta(hours=1), 900.0)  # -10%
     risk.register_trade_close(pnl=-10.0, bar_index=50)
     permission = risk.evaluate_entry(900.0, open_positions=3, bar_index=55)
     assert permission.allowed is False

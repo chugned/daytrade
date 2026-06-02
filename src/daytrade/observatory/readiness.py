@@ -32,12 +32,12 @@ class ReadinessInputs:
     target_days: int
     predictions_evaluated: int
     uptime_pct: float
-    max_drawdown_pct: float          # 0..100
-    overall_accuracy: float          # 0..1
-    false_confidence_count: int      # number of fake-confidence warnings
-    regimes_observed: int            # distinct market regimes seen
-    regime_accuracy_spread: float    # max-min accuracy across regimes, 0..1
-    api_failures: int                # API / data failures logged
+    max_drawdown_pct: float  # 0..100
+    overall_accuracy: float  # 0..1
+    false_confidence_count: int  # number of fake-confidence warnings
+    regimes_observed: int  # distinct market regimes seen
+    regime_accuracy_spread: float  # max-min accuracy across regimes, 0..1
+    api_failures: int  # API / data failures logged
 
 
 @dataclass(frozen=True)
@@ -69,23 +69,25 @@ def readiness_level(score: float) -> str:
 def compute_readiness(inputs: ReadinessInputs) -> ReadinessAssessment:
     """Compute the Paper Strategy Readiness score and level."""
     breakdown: Dict[str, float] = {
-        "data_sufficiency": _clamp(
-            inputs.predictions_evaluated / _TARGET_PREDICTIONS * 100.0),
+        "data_sufficiency": _clamp(inputs.predictions_evaluated / _TARGET_PREDICTIONS * 100.0),
         "uptime": _clamp(inputs.uptime_pct),
         "drawdown": _clamp(100.0 - (inputs.max_drawdown_pct - 5.0) * 5.0),
         "accuracy": _clamp((inputs.overall_accuracy - 0.50) / 0.15 * 100.0),
-        "confidence_honesty": _clamp(
-            100.0 - inputs.false_confidence_count * 25.0),
+        "confidence_honesty": _clamp(100.0 - inputs.false_confidence_count * 25.0),
         "regime_robustness": _clamp(
-            min(inputs.regimes_observed / 5.0, 1.0) * 100.0
-            - inputs.regime_accuracy_spread * 120.0),
+            min(inputs.regimes_observed / 5.0, 1.0) * 100.0 - inputs.regime_accuracy_spread * 120.0
+        ),
         "api_reliability": _clamp(100.0 - inputs.api_failures * 8.0),
     }
     # Data sufficiency and accuracy carry the most weight.
     weights = {
-        "data_sufficiency": 0.20, "uptime": 0.12, "drawdown": 0.15,
-        "accuracy": 0.22, "confidence_honesty": 0.13,
-        "regime_robustness": 0.13, "api_reliability": 0.05,
+        "data_sufficiency": 0.20,
+        "uptime": 0.12,
+        "drawdown": 0.15,
+        "accuracy": 0.22,
+        "confidence_honesty": 0.13,
+        "regime_robustness": 0.13,
+        "api_reliability": 0.05,
     }
     raw = sum(breakdown[k] * w for k, w in weights.items())
 
@@ -99,19 +101,24 @@ def compute_readiness(inputs: ReadinessInputs) -> ReadinessAssessment:
         score = min(raw, _PRE_COMPLETION_CAP)
         blockers.append(
             f"Only day {inputs.day_number}/{inputs.target_days} — readiness "
-            f"is capped at {_PRE_COMPLETION_CAP:.0f} until the window completes.")
+            f"is capped at {_PRE_COMPLETION_CAP:.0f} until the window completes."
+        )
     if inputs.predictions_evaluated < 200:
         blockers.append(
             f"Only {inputs.predictions_evaluated} evaluated predictions — "
-            "not enough evidence yet.")
+            "not enough evidence yet."
+        )
     if inputs.overall_accuracy < 0.5 and inputs.predictions_evaluated >= 50:
-        blockers.append("Directional accuracy below a coin flip — "
-                        "strategy currently unreliable.")
+        blockers.append(
+            "Directional accuracy below a coin flip — " "strategy currently unreliable."
+        )
     if inputs.max_drawdown_pct > 20:
         blockers.append(f"Paper drawdown {inputs.max_drawdown_pct:.0f}% is high.")
     if inputs.false_confidence_count > 0:
-        blockers.append(f"{inputs.false_confidence_count} false-confidence "
-                        "warning(s) — high confidence is not yet proven.")
+        blockers.append(
+            f"{inputs.false_confidence_count} false-confidence "
+            "warning(s) — high confidence is not yet proven."
+        )
     if inputs.regimes_observed < 3:
         blockers.append("Too few market regimes observed to judge robustness.")
 
@@ -121,8 +128,11 @@ def compute_readiness(inputs: ReadinessInputs) -> ReadinessAssessment:
     if not complete:
         headline += f" (day {inputs.day_number}/{inputs.target_days})"
     return ReadinessAssessment(
-        score=score, level=level, capped=capped,
-        day_number=inputs.day_number, headline=headline,
+        score=score,
+        level=level,
+        capped=capped,
+        day_number=inputs.day_number,
+        headline=headline,
         breakdown={k: round(v, 1) for k, v in breakdown.items()},
         blockers=blockers,
     )

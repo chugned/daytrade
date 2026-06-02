@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pytest
 
@@ -10,7 +10,7 @@ from daytrade.config import load_config
 from daytrade.models import BacktestMetrics, WalkForwardFold, WalkForwardReport
 from daytrade.research import history as history_mod
 from daytrade.research import lab as lab_mod
-from daytrade.research.history import HistoryStore, INTERVAL_MS, download_history
+from daytrade.research.history import INTERVAL_MS, HistoryStore, download_history
 from daytrade.research.lab import _verdict, run_research
 
 
@@ -21,12 +21,12 @@ def _fake_klines(n: int, interval_ms: int) -> list:
     for i in range(n):
         t = now_ms - (n - i) * interval_ms
         base = 100.0 + i * 0.1
-        rows.append([t, f"{base}", f"{base + 1}", f"{base - 1}",
-                     f"{base + 0.3}", "10.0"])
+        rows.append([t, f"{base}", f"{base + 1}", f"{base - 1}", f"{base + 0.3}", "10.0"])
     return rows
 
 
 # --- history store ---------------------------------------------------------
+
 
 def test_interval_ms_table():
     assert "1h" in INTERVAL_MS and INTERVAL_MS["1h"] == 3_600_000
@@ -64,27 +64,48 @@ def test_download_history_caches(tmp_path, monkeypatch):
     a = download_history("BTCUSDT", interval="1h", days=2, store=store)
     b = download_history("BTCUSDT", interval="1h", days=2, store=store)
     assert len(a) > 0 and len(b) > 0
-    assert len(calls) == 1          # second call hit the cache, no re-fetch
+    assert len(calls) == 1  # second call hit the cache, no re-fetch
     store.close()
 
 
 # --- verdict logic ---------------------------------------------------------
 
+
 def _bt(*, ret=0.0, sharpe=1.0, win=0.5) -> BacktestMetrics:
     return BacktestMetrics(
-        symbol="BTCUSDT", start=0, end=0, bars=500,
-        starting_equity=1000.0, ending_equity=1000.0 * (1 + ret / 100),
-        total_return_pct=ret, sharpe_like=sharpe, win_rate=win)
+        symbol="BTCUSDT",
+        start=0,
+        end=0,
+        bars=500,
+        starting_equity=1000.0,
+        ending_equity=1000.0 * (1 + ret / 100),
+        total_return_pct=ret,
+        sharpe_like=sharpe,
+        win_rate=win,
+    )
 
 
 def _wf(*, acc=0.5, leakage=False, folds=1) -> WalkForwardReport:
-    fold_list = [WalkForwardFold(
-        fold=i, train_start=0, train_end=0, test_start=0, test_end=0,
-        train_samples=200, test_samples=80, train_accuracy=0.6,
-        test_accuracy=acc) for i in range(folds)]
+    fold_list = [
+        WalkForwardFold(
+            fold=i,
+            train_start=0,
+            train_end=0,
+            test_start=0,
+            test_end=0,
+            train_samples=200,
+            test_samples=80,
+            train_accuracy=0.6,
+            test_accuracy=acc,
+        )
+        for i in range(folds)
+    ]
     return WalkForwardReport(
-        model_kind="gradient_boosting", folds=fold_list,
-        mean_test_accuracy=acc, leakage_suspected=leakage)
+        model_kind="gradient_boosting",
+        folds=fold_list,
+        mean_test_accuracy=acc,
+        leakage_suspected=leakage,
+    )
 
 
 CFG = load_config(load_dotenv_file=False)
@@ -128,12 +149,14 @@ def test_verdict_weak_signal_requires_acc_and_profit():
 
 # --- run_research end-to-end (mocked download) -----------------------------
 
+
 def test_run_research_produces_verdict(monkeypatch):
     from daytrade.exchanges import generate_random_walk
-    candles = generate_random_walk("BTCUSDT", n_bars=420, start_price=60_000.0,
-                                   drift=0.0003, volatility=0.006, seed=4)
-    monkeypatch.setattr(lab_mod, "download_history",
-                        lambda symbol, interval, days: candles)
+
+    candles = generate_random_walk(
+        "BTCUSDT", n_bars=420, start_price=60_000.0, drift=0.0003, volatility=0.006, seed=4
+    )
+    monkeypatch.setattr(lab_mod, "download_history", lambda symbol, interval, days: candles)
     results = run_research(["BTCUSDT"], interval="1h", days=30, config=CFG)
     assert len(results) == 1
     r = results[0]
@@ -144,8 +167,11 @@ def test_run_research_produces_verdict(monkeypatch):
 
 def test_run_research_insufficient_data(monkeypatch):
     from daytrade.exchanges import generate_random_walk
-    monkeypatch.setattr(lab_mod, "download_history",
-                        lambda symbol, interval, days:
-                        generate_random_walk("BTCUSDT", n_bars=30, seed=1))
+
+    monkeypatch.setattr(
+        lab_mod,
+        "download_history",
+        lambda symbol, interval, days: generate_random_walk("BTCUSDT", n_bars=30, seed=1),
+    )
     results = run_research(["BTCUSDT"], interval="1h", days=1, config=CFG)
     assert results[0].verdict == "INSUFFICIENT DATA"

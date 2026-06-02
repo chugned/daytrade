@@ -12,7 +12,7 @@ This is paper / simulation observation only.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -94,8 +94,7 @@ class LearningSession:
         return max(1, int(elapsed / self._effective_cycle_seconds))
 
     def uptime_pct(self, now: datetime) -> float:
-        return min(100.0, self.cycles_completed
-                   / self.expected_cycles(now) * 100.0)
+        return min(100.0, self.cycles_completed / self.expected_cycles(now) * 100.0)
 
     def phase(self, now: datetime) -> str:
         return phase_for(self.day_number(now), self.target_days)
@@ -105,8 +104,9 @@ class LearningSession:
 
     # -- persistence ---------------------------------------------------------
 
-    def state_dict(self, now: datetime, counts: Dict[str, Any],
-                   status: str = "OBSERVING") -> Dict[str, Any]:
+    def state_dict(
+        self, now: datetime, counts: Dict[str, Any], status: str = "OBSERVING"
+    ) -> Dict[str, Any]:
         """Assemble the full ``learning_state.json`` payload."""
         return {
             "start_date": self.start.isoformat(),
@@ -130,18 +130,24 @@ class LearningSession:
             "last_update": now.isoformat(),
         }
 
-    def save_state(self, now: datetime, counts: Dict[str, Any],
-                   status: str = "OBSERVING",
-                   path: Path | str | None = None) -> None:
+    def save_state(
+        self,
+        now: datetime,
+        counts: Dict[str, Any],
+        status: str = "OBSERVING",
+        path: Path | str | None = None,
+    ) -> None:
         # Resolve the path at call time so tests can redirect LEARNING_STATE_PATH.
         path = Path(path) if path is not None else LEARNING_STATE_PATH
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self.state_dict(now, counts, status),
-                                   indent=2), encoding="utf-8")
+        path.write_text(
+            json.dumps(self.state_dict(now, counts, status), indent=2), encoding="utf-8"
+        )
 
     @classmethod
-    def resume_or_create(cls, db, target_days: int = 30,
-                         interval_seconds: int = 300) -> "LearningSession":
+    def resume_or_create(
+        cls, db, target_days: int = 30, interval_seconds: int = 300
+    ) -> LearningSession:
         """Resume the active learning session from the DB, or create one.
 
         Resuming preserves the original start date so the 30-day clock keeps
@@ -157,12 +163,15 @@ class LearningSession:
                 cycles_completed=existing.get("cycles_completed", 0),
             )
         session_id = db.start_learning_session(target_days, interval_seconds)
-        return cls(start=datetime.now(timezone.utc), target_days=target_days,
-                   interval_seconds=interval_seconds, session_id=session_id)
+        return cls(
+            start=datetime.now(timezone.utc),
+            target_days=target_days,
+            interval_seconds=interval_seconds,
+            session_id=session_id,
+        )
 
 
-def load_learning_state(path: Path | str = LEARNING_STATE_PATH
-                        ) -> Optional[Dict[str, Any]]:
+def load_learning_state(path: Path | str = LEARNING_STATE_PATH) -> Optional[Dict[str, Any]]:
     """Read the persisted learning-state JSON, or None if it does not exist."""
     path = Path(path)
     if not path.exists():

@@ -14,7 +14,8 @@ to a real exchange, but every piece ships behind:
 Going live is a deliberate, multi-step opt-in — not a flag flip.
 """
 
-from .binance import BinanceExchange, ShadowModeError, from_env as binance_from_env
+from .binance import BinanceExchange, ShadowModeError
+from .binance import from_env as binance_from_env
 from .broker import LiveBroker, LiveBrokerError
 from .config import LiveConfig
 from .exchange import (

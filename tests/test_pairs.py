@@ -8,7 +8,11 @@ import numpy as np
 import pytest
 
 from daytrade.observatory.pairs import (
-    PairSignal, analyse_pair, backtest_pair, fit_pair, latest_z,
+    PairSignal,
+    analyse_pair,
+    backtest_pair,
+    fit_pair,
+    latest_z,
     signal_from_z,
 )
 
@@ -18,9 +22,13 @@ def rng():
     return np.random.default_rng(seed=42)
 
 
-def _cointegrated(rng: np.random.Generator, n: int = 400,
-                  beta: float = 1.0, mu: float = 0.0,
-                  noise_sigma: float = 0.01) -> tuple[np.ndarray, np.ndarray]:
+def _cointegrated(
+    rng: np.random.Generator,
+    n: int = 400,
+    beta: float = 1.0,
+    mu: float = 0.0,
+    noise_sigma: float = 0.01,
+) -> tuple[np.ndarray, np.ndarray]:
     """Two log-price series whose spread is mean-reverting."""
     # Random walk for x; y = β x + stationary AR(1) noise (mean-reverting).
     eps = rng.normal(0.0, 0.005, size=n)
@@ -32,8 +40,9 @@ def _cointegrated(rng: np.random.Generator, n: int = 400,
     return np.exp(ly), np.exp(lx)
 
 
-def _independent_random_walks(rng: np.random.Generator,
-                              n: int = 400) -> tuple[np.ndarray, np.ndarray]:
+def _independent_random_walks(
+    rng: np.random.Generator, n: int = 400
+) -> tuple[np.ndarray, np.ndarray]:
     """Two unrelated random walks — should NOT be cointegrated."""
     lx = np.cumsum(rng.normal(0.0, 0.005, size=n)) + math.log(100.0)
     ly = np.cumsum(rng.normal(0.0, 0.005, size=n)) + math.log(100.0)
@@ -43,6 +52,7 @@ def _independent_random_walks(rng: np.random.Generator,
 # ---------------------------------------------------------------------------
 # fit_pair
 # ---------------------------------------------------------------------------
+
 
 def test_fit_pair_recovers_known_beta(rng):
     y, x = _cointegrated(rng, n=600, beta=0.7, mu=0.0)
@@ -86,6 +96,7 @@ def test_fit_pair_rejects_mismatched_shapes():
 # z-score
 # ---------------------------------------------------------------------------
 
+
 def test_latest_z_zero_when_spread_at_mean(rng):
     y, x = _cointegrated(rng, n=400)
     fit = fit_pair(y, x)
@@ -110,14 +121,18 @@ def test_latest_z_large_when_spread_far(rng):
 # signal_from_z
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("z,expected", [
-    (2.5, PairSignal.SHORT_SPREAD),
-    (-2.5, PairSignal.LONG_SPREAD),
-    (0.2, PairSignal.EXIT),
-    (1.0, PairSignal.HOLD),
-    (-1.0, PairSignal.HOLD),
-    (float("nan"), PairSignal.HOLD),
-])
+
+@pytest.mark.parametrize(
+    "z,expected",
+    [
+        (2.5, PairSignal.SHORT_SPREAD),
+        (-2.5, PairSignal.LONG_SPREAD),
+        (0.2, PairSignal.EXIT),
+        (1.0, PairSignal.HOLD),
+        (-1.0, PairSignal.HOLD),
+        (float("nan"), PairSignal.HOLD),
+    ],
+)
 def test_signal_from_z(z, expected):
     assert signal_from_z(z, entry_z=2.0, exit_z=0.5) == expected
 
@@ -125,6 +140,7 @@ def test_signal_from_z(z, expected):
 # ---------------------------------------------------------------------------
 # analyse_pair end-to-end
 # ---------------------------------------------------------------------------
+
 
 def test_analyse_pair_holds_when_not_cointegrated(rng):
     y, x = _independent_random_walks(rng, n=200)
@@ -160,10 +176,10 @@ def test_analyse_pair_shocked_spread_triggers_signal(rng):
 # Backtest
 # ---------------------------------------------------------------------------
 
+
 def test_backtest_produces_trades_on_cointegrated_series(rng):
     y, x = _cointegrated(rng, n=1200, noise_sigma=0.02)
-    res = backtest_pair(y, x, lookback=300, entry_z=1.5, exit_z=0.3,
-                        refit_every=120)
+    res = backtest_pair(y, x, lookback=300, entry_z=1.5, exit_z=0.3, refit_every=120)
     assert res.trades > 0
     # No assertion on win-rate — random seed varies; mean-reverting series
     # generators don't guarantee positive PnL each time, but they should
@@ -189,12 +205,18 @@ def test_backtest_skips_when_no_cointegration(rng):
 # No-trade-side-effects guarantee
 # ---------------------------------------------------------------------------
 
+
 def test_module_has_no_order_execution_symbols():
     """Defence-in-depth: pairs.py must never import or define order code."""
     import daytrade.observatory.pairs as pairs_mod
 
     src = open(pairs_mod.__file__).read()
-    for forbidden in ("place_order", "execute_trade", "send_order",
-                      "live_order", "submit_market", "submit_limit"):
-        assert forbidden not in src, (
-            f"pairs.py must never contain '{forbidden}' — paper-only.")
+    for forbidden in (
+        "place_order",
+        "execute_trade",
+        "send_order",
+        "live_order",
+        "submit_market",
+        "submit_limit",
+    ):
+        assert forbidden not in src, f"pairs.py must never contain '{forbidden}' — paper-only."

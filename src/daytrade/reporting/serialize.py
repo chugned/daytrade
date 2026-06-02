@@ -22,7 +22,7 @@ _SAFETY_NOTE = (
 )
 
 
-def decision_report_dict(result: "PipelineResult") -> Dict[str, Any]:
+def decision_report_dict(result: PipelineResult) -> Dict[str, Any]:
     """Serialize a pipeline result to a plain JSON-ready dict."""
     d = result.decision
     return {
@@ -54,7 +54,7 @@ def decision_report_dict(result: "PipelineResult") -> Dict[str, Any]:
     }
 
 
-def decision_report_markdown(result: "PipelineResult") -> str:
+def decision_report_markdown(result: PipelineResult) -> str:
     """Render a pipeline result as a Markdown report."""
     d = result.decision
     lines = [
@@ -75,29 +75,38 @@ def decision_report_markdown(result: "PipelineResult") -> str:
             f"- **Target:** {d.target:,.2f}",
             f"- **Risk/Reward:** {d.risk_reward:.2f}",
         ]
-    lines += ["", "## Analysis layers", "",
-              "| Layer | Bias | Score | Confidence |",
-              "|-------|------|-------|------------|"]
-    for name, sig in (("Technical", result.technical),
-                      ("Microstructure", result.microstructure),
-                      ("Macro", result.macro), ("ML", result.ml)):
-        lines.append(
-            f"| {name} | {sig.bias.value} | {sig.score:+.3f} | {sig.confidence:.2f} |"
-        )
+    lines += [
+        "",
+        "## Analysis layers",
+        "",
+        "| Layer | Bias | Score | Confidence |",
+        "|-------|------|-------|------------|",
+    ]
+    for name, sig in (
+        ("Technical", result.technical),
+        ("Microstructure", result.microstructure),
+        ("Macro", result.macro),
+        ("ML", result.ml),
+    ):
+        lines.append(f"| {name} | {sig.bias.value} | {sig.score:+.3f} | {sig.confidence:.2f} |")
     if result.kill_switch.active:
         lines += ["", "## ⚠ Kill switch ACTIVE", ""]
         lines += [f"- {r}" for r in result.kill_switch.reasons]
     lines += ["", "## Reasoning", ""]
     lines += [f"- {r}" for r in d.reasoning]
-    lines += ["", "## Execution assumptions", "",
-              "- Simulated fills only — adverse slippage, two-sided fees, "
-              "liquidity-capped partial fills, modeled latency.",
-              "- This platform CANNOT place real trades.",
-              "- Backtests are NOT reality."]
+    lines += [
+        "",
+        "## Execution assumptions",
+        "",
+        "- Simulated fills only — adverse slippage, two-sided fees, "
+        "liquidity-capped partial fills, modeled latency.",
+        "- This platform CANNOT place real trades.",
+        "- Backtests are NOT reality.",
+    ]
     return "\n".join(lines) + "\n"
 
 
-def backtest_report_dict(result: "BacktestResult") -> Dict[str, Any]:
+def backtest_report_dict(result: BacktestResult) -> Dict[str, Any]:
     """Serialize backtest metrics to a JSON-ready dict."""
     m: BacktestMetrics = result.metrics
     data = json.loads(m.to_json())
@@ -107,7 +116,7 @@ def backtest_report_dict(result: "BacktestResult") -> Dict[str, Any]:
     return data
 
 
-def backtest_report_markdown(result: "BacktestResult") -> str:
+def backtest_report_markdown(result: BacktestResult) -> str:
     """Render backtest metrics as a Markdown report."""
     m: BacktestMetrics = result.metrics
     lines = [

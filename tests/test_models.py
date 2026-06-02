@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 import pytest
 
 from daytrade.models import (
-    Action,
     OHLCV,
+    Action,
     OrderBookSnapshot,
     PriceTick,
     Side,
@@ -26,8 +26,7 @@ def test_timestamp_normalization_units():
 
 
 def test_timestamp_normalization_iso_and_z():
-    assert normalize_timestamp("2026-01-01T00:00:00Z") == \
-        datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert normalize_timestamp("2026-01-01T00:00:00Z") == datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 def test_timestamp_rejects_bool():
@@ -65,7 +64,9 @@ def test_ohlcv_helpers():
 def test_orderbook_rejects_unsorted_bids():
     with pytest.raises(ValueError):
         OrderBookSnapshot(
-            symbol="BTC", exchange="x", timestamp=0,
+            symbol="BTC",
+            exchange="x",
+            timestamp=0,
             bids=[{"price": 9, "quantity": 1}, {"price": 10, "quantity": 1}],
             asks=[{"price": 11, "quantity": 1}],
         )
@@ -74,7 +75,9 @@ def test_orderbook_rejects_unsorted_bids():
 def test_orderbook_rejects_crossed_book():
     with pytest.raises(ValueError):
         OrderBookSnapshot(
-            symbol="BTC", exchange="x", timestamp=0,
+            symbol="BTC",
+            exchange="x",
+            timestamp=0,
             bids=[{"price": 12, "quantity": 1}],
             asks=[{"price": 11, "quantity": 1}],
         )
@@ -82,7 +85,9 @@ def test_orderbook_rejects_crossed_book():
 
 def test_orderbook_mid_and_spread():
     book = OrderBookSnapshot(
-        symbol="BTC", exchange="x", timestamp=0,
+        symbol="BTC",
+        exchange="x",
+        timestamp=0,
         bids=[{"price": 99, "quantity": 2}],
         asks=[{"price": 101, "quantity": 3}],
     )
@@ -95,20 +100,27 @@ def test_orderbook_mid_and_spread():
 def test_trading_decision_buy_geometry_enforced():
     """A BUY must satisfy stop < entry < target."""
     with pytest.raises(ValueError):
-        TradingDecision(symbol="BTC", timestamp=0, action=Action.BUY,
-                        confidence=0.5, entry=100, stop=110, target=120)
+        TradingDecision(
+            symbol="BTC",
+            timestamp=0,
+            action=Action.BUY,
+            confidence=0.5,
+            entry=100,
+            stop=110,
+            target=120,
+        )
 
 
 def test_trading_decision_risk_reward():
-    d = TradingDecision(symbol="BTC", timestamp=0, action=Action.BUY,
-                        confidence=0.5, entry=100, stop=95, target=115)
+    d = TradingDecision(
+        symbol="BTC", timestamp=0, action=Action.BUY, confidence=0.5, entry=100, stop=95, target=115
+    )
     assert d.risk_reward == pytest.approx(3.0)
     assert d.is_actionable
 
 
 def test_trading_decision_hold_needs_no_levels():
-    d = TradingDecision(symbol="BTC", timestamp=0, action=Action.HOLD,
-                        confidence=0.2)
+    d = TradingDecision(symbol="BTC", timestamp=0, action=Action.HOLD, confidence=0.2)
     assert not d.is_actionable
     assert d.risk_reward is None
 
@@ -120,8 +132,15 @@ def test_model_is_frozen():
 
 
 def test_model_json_roundtrip():
-    d = TradingDecision(symbol="BTC", timestamp=0, action=Action.SELL,
-                        confidence=0.5, entry=100, stop=105, target=90)
+    d = TradingDecision(
+        symbol="BTC",
+        timestamp=0,
+        action=Action.SELL,
+        confidence=0.5,
+        entry=100,
+        stop=105,
+        target=90,
+    )
     assert TradingDecision.from_json(d.to_json()) == d
 
 

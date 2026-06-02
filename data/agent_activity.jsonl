@@ -88,3 +88,7 @@
 {"ts": "2026-06-02T02:15:30.134175+00:00", "agent": "claude-main", "kind": "status", "summary": "P1-4: drafting CLAUDE.md for nighttrade"}
 {"ts": "2026-06-02T02:16:11.205707+00:00", "agent": "claude-main", "kind": "edit", "summary": "P1-4 done: CLAUDE.md drafted for nighttrade"}
 {"ts": "2026-06-02T02:16:11.207368+00:00", "agent": "claude-main", "kind": "status", "summary": "P1-5: ADR-0001 alert routing fix"}
+{"ts": "2026-06-02T02:20:26.702395+00:00", "agent": "claude-main", "kind": "shell", "summary": "P1-2 nighttrade: see task output"}
+{"ts": "2026-06-02T02:20:26.703589+00:00", "agent": "claude-main", "kind": "complete", "summary": "Phase 1 done: CLAUDE.md + 5 ADRs committed + pushed both repos"}
+{"ts": "2026-06-02T02:20:41.552912+00:00", "agent": "claude-main", "kind": "status", "summary": "Phase 2: ruff + black + mypy baseline"}
+{"ts": "2026-06-02T02:20:41.554167+00:00", "agent": "claude-main", "kind": "status", "summary": "P2-1: ruff/black/mypy on daytrade"}

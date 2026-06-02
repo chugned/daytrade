@@ -57,3 +57,35 @@ markers = [
 [tool.coverage.run]
 source = ["src/daytrade"]
 branch = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+extend-exclude = [
+  "artifacts", "data", "logs", "reports",
+  ".iterations", "freqtrade-port/.venv", "freqtrade-port/user_data",
+]
+
+[tool.ruff.lint]
+# Conservative starter: pyflakes errors, pycodestyle errors,
+# import sorting, bugbear, simplify. Skip docstrings + type-annotation
+# enforcement until codebase is ready.
+select = ["E", "F", "W", "I", "B", "SIM", "UP"]
+# We have intentional broad excepts in safety-critical loop code.
+ignore = ["B008", "B904", "SIM108", "UP007", "E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+extend-exclude = '''(
+    artifacts | data | logs | reports | \.iterations | freqtrade-port
+)'''
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+# Start permissive — only catch the obvious bugs. Tighten later.
+check_untyped_defs = false
+disallow_untyped_defs = false
+warn_return_any = false
+exclude = ["artifacts/", "data/", "logs/", "reports/", "\\.iterations/", "freqtrade-port/"]

@@ -90,9 +90,7 @@ class LiveBroker:
             try:
                 starting_cash = self._exchange.get_balance(self._base)
             except (ExchangeUnreachable, Exception) as exc:  # noqa: BLE001
-                raise LiveBrokerError(
-                    f"cannot start broker: balance query failed ({exc})"
-                ) from exc
+                raise LiveBrokerError(f"cannot start broker: balance query failed ({exc})") from exc
         self._starting_cash = float(starting_cash)
         self._lots: Dict[str, _Lot] = {}
         self._closed_trades: List[TradeRecord] = []
@@ -170,7 +168,8 @@ class LiveBroker:
             if current == self._halted_until_day and side is Side.BUY:
                 raise LiveBrokerError(
                     f"daily loss-cap hit ({self._loss_today:.2f} >= "
-                    f"{self.config.max_daily_loss:.2f}); refusing new BUY")
+                    f"{self.config.max_daily_loss:.2f}); refusing new BUY"
+                )
 
         # Stake cap on entries
         if side is Side.BUY:
@@ -178,13 +177,14 @@ class LiveBroker:
             if notional > self.config.max_stake_per_trade + _EPS:
                 raise LiveBrokerError(
                     f"stake {notional:.2f} exceeds max_stake_per_trade "
-                    f"{self.config.max_stake_per_trade:.2f}")
-            open_count = sum(
-                1 for lot in self._lots.values() if lot.quantity > _EPS)
+                    f"{self.config.max_stake_per_trade:.2f}"
+                )
+            open_count = sum(1 for lot in self._lots.values() if lot.quantity > _EPS)
             if open_count >= self.config.max_open_positions:
                 raise LiveBrokerError(
                     f"max_open_positions ({self.config.max_open_positions}) "
-                    "reached; refusing new BUY")
+                    "reached; refusing new BUY"
+                )
 
         if side is Side.SELL:
             lot = self._lots.get(symbol)
@@ -194,7 +194,9 @@ class LiveBroker:
             quantity = min(quantity, held)
 
         client_order_id = generate_client_order_id(
-            symbol=symbol, side=side.value, timestamp=timestamp,
+            symbol=symbol,
+            side=side.value,
+            timestamp=timestamp,
         )
         order = ExchangeOrder(
             client_order_id=client_order_id,
@@ -205,7 +207,11 @@ class LiveBroker:
         )
         _log.info(
             "submit %s %s %.6f @~%.6f (clientOrderId=%s)",
-            side.value, symbol, quantity, reference_price, client_order_id,
+            side.value,
+            symbol,
+            quantity,
+            reference_price,
+            client_order_id,
         )
         try:
             fill = self._exchange.place_market_order(order)
@@ -233,9 +239,8 @@ class LiveBroker:
             new_qty = lot.quantity + fill.quantity
             if new_qty > _EPS:
                 lot.avg_price = (
-                    (lot.avg_price * lot.quantity + fill.price * fill.quantity)
-                    / new_qty
-                )
+                    lot.avg_price * lot.quantity + fill.price * fill.quantity
+                ) / new_qty
             lot.quantity = new_qty
             lot.fees_paid += fill.fee
             if lot.opened_at is None:
@@ -246,16 +251,18 @@ class LiveBroker:
             proceeds = fill.price * sold_qty - fill.fee
             pnl = proceeds - cost - lot.fees_paid * (sold_qty / max(lot.quantity, _EPS))
             self._loss_today += min(0.0, pnl) * -1.0  # accumulate loss magnitude
-            self._closed_trades.append(TradeRecord(
-                symbol=fill.symbol,
-                quantity=sold_qty,
-                entry_price=lot.avg_price,
-                exit_price=fill.price,
-                opened_at=lot.opened_at or fill.timestamp,
-                closed_at=fill.timestamp,
-                pnl=pnl,
-                fees=lot.fees_paid + fill.fee,
-            ))
+            self._closed_trades.append(
+                TradeRecord(
+                    symbol=fill.symbol,
+                    quantity=sold_qty,
+                    entry_price=lot.avg_price,
+                    exit_price=fill.price,
+                    opened_at=lot.opened_at or fill.timestamp,
+                    closed_at=fill.timestamp,
+                    pnl=pnl,
+                    fees=lot.fees_paid + fill.fee,
+                )
+            )
             lot.quantity -= sold_qty
             if lot.quantity <= _EPS:
                 lot.quantity = 0.0
@@ -266,13 +273,12 @@ class LiveBroker:
             # respects injected timestamps in tests and historical replay.
             if self._loss_today >= self.config.max_daily_loss:
                 self._halted_until_day = (
-                    _now_day or fill.timestamp.astimezone(timezone.utc)
-                                .date().isoformat()
+                    _now_day or fill.timestamp.astimezone(timezone.utc).date().isoformat()
                 )
                 _log.error(
-                    "DAILY LOSS-CAP HIT: %.2f >= %.2f; halting new BUYs "
-                    "for day %s",
-                    self._loss_today, self.config.max_daily_loss,
+                    "DAILY LOSS-CAP HIT: %.2f >= %.2f; halting new BUYs " "for day %s",
+                    self._loss_today,
+                    self.config.max_daily_loss,
                     self._halted_until_day,
                 )
 
@@ -298,10 +304,11 @@ class LiveBroker:
         rel = drift / max(remote.quantity, local.quantity, 1e-9)
         if rel > 0.001:  # >0.1% drift
             _log.error(
-                "RECONCILIATION DRIFT %s: local qty=%.8f, exchange qty=%.8f "
-                "(rel=%.2f%%)",
-                symbol, local.quantity, remote.quantity, rel * 100,
+                "RECONCILIATION DRIFT %s: local qty=%.8f, exchange qty=%.8f " "(rel=%.2f%%)",
+                symbol,
+                local.quantity,
+                remote.quantity,
+                rel * 100,
             )
         else:
-            _log.debug("reconcile OK %s: %.8f == %.8f", symbol,
-                       local.quantity, remote.quantity)
+            _log.debug("reconcile OK %s: %.8f == %.8f", symbol, local.quantity, remote.quantity)

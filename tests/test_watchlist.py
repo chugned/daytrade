@@ -15,9 +15,15 @@ CFG = WatchlistConfig()
 
 
 def _metrics(**overrides) -> AssetMetrics:
-    base = dict(symbol="XUSDT", price=100.0, volume_24h_usd=1e9,
-                spread_bps=3.0, book_notional_usd=1e6, populated_levels=40,
-                move_1h_pct=0.01)
+    base = dict(
+        symbol="XUSDT",
+        price=100.0,
+        volume_24h_usd=1e9,
+        spread_bps=3.0,
+        book_notional_usd=1e6,
+        populated_levels=40,
+        move_1h_pct=0.01,
+    )
     base.update(overrides)
     return AssetMetrics(**base)
 
@@ -66,8 +72,8 @@ def test_screener_separates_good_and_bad():
     screener = WatchlistScreener(CFG)
     approved = screener.approved_symbols(data)
     assert "BTCUSDT" in approved and "ETHUSDT" in approved
-    assert "THINUSDT" not in approved   # thin / low volume
-    assert "PUMPUSDT" not in approved   # pump-and-dump
+    assert "THINUSDT" not in approved  # thin / low volume
+    assert "PUMPUSDT" not in approved  # pump-and-dump
 
 
 def test_screener_screens_all_symbols():

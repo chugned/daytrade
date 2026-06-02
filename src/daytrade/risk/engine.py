@@ -89,9 +89,7 @@ class RiskEngine:
             )
         if bar_index < self._cooldown_until_bar:
             remaining = self._cooldown_until_bar - bar_index
-            blocks.append(
-                f"post-loss cooldown active: {remaining} bar(s) remaining"
-            )
+            blocks.append(f"post-loss cooldown active: {remaining} bar(s) remaining")
 
         if blocks:
             return TradePermission(False, blocks[0], blocks)
@@ -130,10 +128,14 @@ class RiskEngine:
     ) -> Fill:
         """Simulate an adverse, realistic fill for an order."""
         return simulate_fill(
-            order_id=order_id, symbol=symbol, side=side, quantity=quantity,
+            order_id=order_id,
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
             reference_price=reference_price,
             available_liquidity=available_liquidity,
-            config=self.config, timestamp=timestamp,
+            config=self.config,
+            timestamp=timestamp,
         )
 
     # -- introspection -------------------------------------------------------

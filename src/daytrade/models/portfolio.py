@@ -21,9 +21,7 @@ class Fill(DaytradeModel):
     price: float = Field(gt=0, description="Effective fill price AFTER slippage.")
     requested_price: float = Field(gt=0, description="Price before slippage.")
     fee: float = Field(ge=0)
-    slippage: float = Field(
-        ge=0, description="Absolute adverse price move modeled on this fill."
-    )
+    slippage: float = Field(ge=0, description="Absolute adverse price move modeled on this fill.")
     timestamp: datetime
     is_partial: bool = False
 

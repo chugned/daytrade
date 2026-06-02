@@ -52,19 +52,27 @@ def evaluate_regime_gate(
 
     if group is None or samples < min_samples:
         return RegimeGateResult(
-            allowed=True, regime=regime, samples=samples,
+            allowed=True,
+            regime=regime,
+            samples=samples,
             reason=f"only {samples} samples — allowed through to gather evidence",
             accuracy=group.accuracy if group else None,
         )
     if group.accuracy < min_accuracy:
         return RegimeGateResult(
-            allowed=False, regime=regime, samples=samples,
+            allowed=False,
+            regime=regime,
+            samples=samples,
             accuracy=group.accuracy,
-            reason=(f"regime accuracy {group.accuracy:.0%} below the "
-                    f"{min_accuracy:.0%} floor ({samples} samples)"),
+            reason=(
+                f"regime accuracy {group.accuracy:.0%} below the "
+                f"{min_accuracy:.0%} floor ({samples} samples)"
+            ),
         )
     return RegimeGateResult(
-        allowed=True, regime=regime, samples=samples, accuracy=group.accuracy,
-        reason=(f"regime accuracy {group.accuracy:.0%} clears the "
-                f"{min_accuracy:.0%} floor"),
+        allowed=True,
+        regime=regime,
+        samples=samples,
+        accuracy=group.accuracy,
+        reason=(f"regime accuracy {group.accuracy:.0%} clears the " f"{min_accuracy:.0%} floor"),
     )

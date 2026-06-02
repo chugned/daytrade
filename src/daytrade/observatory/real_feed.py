@@ -20,7 +20,7 @@ from __future__ import annotations
 import time
 from collections import OrderedDict
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import httpx
 from tenacity import (
@@ -67,7 +67,7 @@ class RealMarketFeed:
         self._max_retries = max(1, max_retries)
         # (symbol, minute_ms) -> close price. Closed candles never change,
         # so the *value* is immutable per key; we evict by FIFO on size.
-        self._minute_close: "OrderedDict[Tuple[str, int], float]" = OrderedDict()
+        self._minute_close: OrderedDict[Tuple[str, int], float] = OrderedDict()
         # symbol -> (fetched_at_epoch, candles) short-TTL cache.
         self._recent: Dict[str, Tuple[float, List[OHLCV]]] = {}
         # QA-HIGH-5: one long-lived httpx.Client reuses the TLS
@@ -118,23 +118,28 @@ class RealMarketFeed:
     def _kline_to_ohlcv(symbol: str, k: list) -> OHLCV:
         # Binance kline: [openTime, open, high, low, close, volume, closeTime, ...]
         return OHLCV(
-            symbol=symbol, timestamp=int(k[0]),
-            open=float(k[1]), high=float(k[2]), low=float(k[3]),
-            close=float(k[4]), volume=float(k[5]),
+            symbol=symbol,
+            timestamp=int(k[0]),
+            open=float(k[1]),
+            high=float(k[2]),
+            low=float(k[3]),
+            close=float(k[4]),
+            volume=float(k[5]),
         )
 
     # -- feed interface ------------------------------------------------------
 
-    def candles_at(self, symbol: str, as_of: datetime,
-                   n_bars: int = 240) -> List[OHLCV]:
+    def candles_at(self, symbol: str, as_of: datetime, n_bars: int = 240) -> List[OHLCV]:
         """The ``n_bars`` real 1-minute candles ending at/just before ``as_of``."""
         cached = self._recent.get(symbol)
-        if cached and (time.time() - cached[0]) < _RECENT_TTL \
-                and len(cached[1]) >= n_bars:
+        if cached and (time.time() - cached[0]) < _RECENT_TTL and len(cached[1]) >= n_bars:
             return cached[1][-n_bars:]
 
-        params: Dict[str, Any] = {"symbol": symbol, "interval": "1m",
-                                  "limit": min(1000, max(n_bars, 1))}
+        params: Dict[str, Any] = {
+            "symbol": symbol,
+            "interval": "1m",
+            "limit": min(1000, max(n_bars, 1)),
+        }
         params["endTime"] = int(as_of.timestamp() * 1000)
         rows = self._get("/api/v3/klines", params)
         if not rows:
@@ -154,9 +159,9 @@ class RealMarketFeed:
         key = (symbol, _minute_ms(when))
         if key in self._minute_close:
             return self._minute_close[key]
-        rows = self._get("/api/v3/klines", {
-            "symbol": symbol, "interval": "1m",
-            "startTime": key[1], "limit": 1})
+        rows = self._get(
+            "/api/v3/klines", {"symbol": symbol, "interval": "1m", "startTime": key[1], "limit": 1}
+        )
         if not rows:
             raise ExchangeError(f"no kline for {symbol} at {when.isoformat()}")
         close = float(rows[0][4])
@@ -170,24 +175,36 @@ class RealMarketFeed:
         reading (the top 20 alone undercounts notional on real books).
         """
         data = self._get("/api/v3/depth", {"symbol": symbol, "limit": 100})
-        bids = [OrderBookLevel(price=float(p), quantity=float(q))
-                for p, q in data.get("bids", []) if float(q) > 0]
-        asks = [OrderBookLevel(price=float(p), quantity=float(q))
-                for p, q in data.get("asks", []) if float(q) > 0]
+        bids = [
+            OrderBookLevel(price=float(p), quantity=float(q))
+            for p, q in data.get("bids", [])
+            if float(q) > 0
+        ]
+        asks = [
+            OrderBookLevel(price=float(p), quantity=float(q))
+            for p, q in data.get("asks", [])
+            if float(q) > 0
+        ]
         bids.sort(key=lambda lvl: lvl.price, reverse=True)
         asks.sort(key=lambda lvl: lvl.price)
         return OrderBookSnapshot(
-            symbol=symbol, exchange="binance",
-            timestamp=datetime.now(timezone.utc), bids=bids, asks=asks)
+            symbol=symbol,
+            exchange="binance",
+            timestamp=datetime.now(timezone.utc),
+            bids=bids,
+            asks=asks,
+        )
 
     def tick_at(self, symbol: str, as_of: datetime) -> PriceTick:
         """A real 24h ticker for ``symbol``."""
         data = self._get("/api/v3/ticker/24hr", {"symbol": symbol})
         return PriceTick(
-            symbol=symbol, exchange="binance",
+            symbol=symbol,
+            exchange="binance",
             price=float(data["lastPrice"]),
             timestamp=datetime.now(timezone.utc),
-            volume_24h=float(data.get("quoteVolume", 0.0)))
+            volume_24h=float(data.get("quoteVolume", 0.0)),
+        )
 
 
 def build_feed(config):
@@ -197,6 +214,7 @@ def build_feed(config):
     Otherwise -> the deterministic offline simulator.
     """
     from .feed import LiveMockFeed
+
     if config.runtime.allow_network:
         _log.info("market feed: REAL Binance public data (read-only)")
         return RealMarketFeed()

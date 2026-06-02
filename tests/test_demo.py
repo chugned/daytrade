@@ -23,8 +23,10 @@ from daytrade.pipeline import AnalysisPipeline
 def demo_result():
     cfg = load_config(load_dotenv_file=False)
     return AnalysisPipeline(cfg).analyze(
-        build_demo_candles(), build_demo_orderbook(),
-        reference_price=DEMO_REFERENCE_PRICE, macro_scenario=DEMO_MACRO_SCENARIO,
+        build_demo_candles(),
+        build_demo_orderbook(),
+        reference_price=DEMO_REFERENCE_PRICE,
+        macro_scenario=DEMO_MACRO_SCENARIO,
     )
 
 
@@ -67,10 +69,16 @@ def test_demo_orderbook_sell_heavy(demo_result):
 def test_demo_is_deterministic():
     cfg = load_config(load_dotenv_file=False)
     a = AnalysisPipeline(cfg).analyze(
-        build_demo_candles(), build_demo_orderbook(),
-        reference_price=DEMO_REFERENCE_PRICE, macro_scenario=DEMO_MACRO_SCENARIO)
+        build_demo_candles(),
+        build_demo_orderbook(),
+        reference_price=DEMO_REFERENCE_PRICE,
+        macro_scenario=DEMO_MACRO_SCENARIO,
+    )
     b = AnalysisPipeline(cfg).analyze(
-        build_demo_candles(), build_demo_orderbook(),
-        reference_price=DEMO_REFERENCE_PRICE, macro_scenario=DEMO_MACRO_SCENARIO)
+        build_demo_candles(),
+        build_demo_orderbook(),
+        reference_price=DEMO_REFERENCE_PRICE,
+        macro_scenario=DEMO_MACRO_SCENARIO,
+    )
     assert a.decision.confidence == b.decision.confidence
     assert a.decision.entry == b.decision.entry

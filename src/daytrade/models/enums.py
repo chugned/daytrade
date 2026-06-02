@@ -28,7 +28,7 @@ class Side(StrEnum):
         return 1 if self is Side.BUY else -1
 
     @property
-    def opposite(self) -> "Side":
+    def opposite(self) -> Side:
         return Side.SELL if self is Side.BUY else Side.BUY
 
 

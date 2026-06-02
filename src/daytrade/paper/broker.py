@@ -12,13 +12,13 @@ where someone might look for it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from ..config.schema import RiskConfig
 from ..models import Fill, PortfolioSnapshot, Position, Side
 from ..risk.execution import simulate_fill
-from ..config.schema import RiskConfig
 from ..runtime import get_logger
 from ..safety.guard import assert_paper_only, forbid_real_trading
 
@@ -36,7 +36,7 @@ class TradeRecord:
     exit_price: float
     opened_at: datetime
     closed_at: datetime
-    pnl: float           # net of all fees
+    pnl: float  # net of all fees
     fees: float
 
     @property
@@ -136,10 +136,14 @@ class PaperBroker:
             quantity = min(quantity, held_qty)
 
         fill = simulate_fill(
-            order_id=order_id, symbol=symbol, side=side, quantity=quantity,
+            order_id=order_id,
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
             reference_price=reference_price,
             available_liquidity=available_liquidity,
-            config=risk_config, timestamp=timestamp,
+            config=risk_config,
+            timestamp=timestamp,
         )
         self._apply_fill(fill)
         return fill
@@ -157,9 +161,7 @@ class PaperBroker:
     ) -> PortfolioSnapshot:
         """Return an immutable portfolio snapshot marked at ``mark_prices``."""
         positions = {
-            sym: self.position(sym)
-            for sym, lot in self._lots.items()
-            if lot.quantity > _EPS
+            sym: self.position(sym) for sym, lot in self._lots.items() if lot.quantity > _EPS
         }
         return PortfolioSnapshot(
             timestamp=timestamp,
@@ -194,10 +196,7 @@ class PaperBroker:
         if fill.side is Side.BUY:
             self._cash -= fill.notional + fill.fee
             new_qty = lot.quantity + fill.quantity
-            lot.avg_price = (
-                (lot.avg_price * lot.quantity + fill.price * fill.quantity)
-                / new_qty
-            )
+            lot.avg_price = (lot.avg_price * lot.quantity + fill.price * fill.quantity) / new_qty
             lot.quantity = new_qty
             lot.fees_paid += fill.fee
             if lot.opened_at is None:
@@ -211,17 +210,24 @@ class PaperBroker:
             lot.quantity -= sold
             if lot.quantity <= _EPS:
                 # Position fully closed -> record the round-trip trade.
-                self._trades.append(TradeRecord(
-                    symbol=fill.symbol,
-                    quantity=round(sold, 10),
-                    entry_price=round(lot.avg_price, 8),
-                    exit_price=round(fill.price, 8),
-                    opened_at=lot.opened_at or fill.timestamp,
-                    closed_at=fill.timestamp,
-                    pnl=round(realized - lot.fees_paid, 8),
-                    fees=round(lot.fees_paid, 8),
-                ))
+                self._trades.append(
+                    TradeRecord(
+                        symbol=fill.symbol,
+                        quantity=round(sold, 10),
+                        entry_price=round(lot.avg_price, 8),
+                        exit_price=round(fill.price, 8),
+                        opened_at=lot.opened_at or fill.timestamp,
+                        closed_at=fill.timestamp,
+                        pnl=round(realized - lot.fees_paid, 8),
+                        fees=round(lot.fees_paid, 8),
+                    )
+                )
                 self._lots[fill.symbol] = _OpenLot()
         self._fills.append(fill)
-        _log.debug("fill applied: %s %s %.6f @ %.2f",
-                   fill.side.value, fill.symbol, fill.quantity, fill.price)
+        _log.debug(
+            "fill applied: %s %s %.6f @ %.2f",
+            fill.side.value,
+            fill.symbol,
+            fill.quantity,
+            fill.price,
+        )

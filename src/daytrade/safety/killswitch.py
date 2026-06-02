@@ -41,7 +41,7 @@ class KillSwitchResult:
 def evaluate_macro_kill_switch(
     macro: MacroSignal,
     config: KillSwitchConfig,
-) -> "tuple[bool, List[str]]":
+) -> tuple[bool, List[str]]:
     """Return ``(triggered, reasons)`` for systemic macro hazards."""
     reasons: List[str] = []
     block_rank = RiskLevel(config.macro_risk_block).rank
@@ -59,7 +59,7 @@ def evaluate_macro_kill_switch(
 def evaluate_micro_kill_switch(
     micro: MicrostructureSignal,
     config: KillSwitchConfig,
-) -> "tuple[bool, List[str]]":
+) -> tuple[bool, List[str]]:
     """Return ``(triggered, reasons)`` for local market-structure hazards."""
     reasons: List[str] = []
 
@@ -69,8 +69,7 @@ def evaluate_micro_kill_switch(
         reasons.append("thin liquidity — liquidity-trap / slippage risk")
     if micro.spread_bps is not None and micro.spread_bps > config.micro_max_spread_bps:
         reasons.append(
-            f"extreme spread {micro.spread_bps:.1f} bps "
-            f"> {config.micro_max_spread_bps} bps"
+            f"extreme spread {micro.spread_bps:.1f} bps " f"> {config.micro_max_spread_bps} bps"
         )
     return bool(reasons), reasons
 
@@ -83,10 +82,7 @@ def evaluate_kill_switch(
     """Evaluate both kill switches and combine them."""
     macro_trig, macro_reasons = evaluate_macro_kill_switch(macro, config)
     micro_trig, micro_reasons = evaluate_micro_kill_switch(micro, config)
-    reasons = (
-        [f"[macro] {r}" for r in macro_reasons]
-        + [f"[micro] {r}" for r in micro_reasons]
-    )
+    reasons = [f"[macro] {r}" for r in macro_reasons] + [f"[micro] {r}" for r in micro_reasons]
     return KillSwitchResult(
         active=macro_trig or micro_trig,
         macro_triggered=macro_trig,

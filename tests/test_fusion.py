@@ -8,7 +8,6 @@ from daytrade.config import FusionConfig
 from daytrade.fusion import FusionEngine
 from daytrade.models import (
     Action,
-    Bias,
     MacroSignal,
     MicrostructureSignal,
     MLSignal,
@@ -24,16 +23,14 @@ def _signals(t=0.0, m=0.0, x=0.0, ml=0.0, tc=0.7, mc=0.7, xc=0.7, mlc=0.7):
     return (
         TechnicalSignal(symbol="BTC", timestamp=TS, score=t, confidence=tc),
         MicrostructureSignal(symbol="BTC", timestamp=TS, score=m, confidence=mc),
-        MacroSignal(symbol="BTC", timestamp=TS, score=x, confidence=xc,
-                    risk_level=RiskLevel.LOW),
+        MacroSignal(symbol="BTC", timestamp=TS, score=x, confidence=xc, risk_level=RiskLevel.LOW),
         MLSignal(symbol="BTC", timestamp=TS, score=ml, confidence=mlc),
     )
 
 
 def _decide(engine, signals, ref=100.0, atr=None, kill=None):
     kill = kill or KillSwitchResult(active=False)
-    return engine.decide("BTC", TS, *signals, reference_price=ref,
-                          kill_switch=kill, atr=atr)
+    return engine.decide("BTC", TS, *signals, reference_price=ref, kill_switch=kill, atr=atr)
 
 
 def test_strong_bullish_signals_produce_buy():
@@ -68,8 +65,7 @@ def test_low_confidence_forces_hold():
     """A strong score but uniformly low confidence downgrades to HOLD."""
     cfg = FusionConfig()
     engine = FusionEngine(cfg)
-    d = _decide(engine, _signals(t=0.6, m=0.6, x=0.6, ml=0.6,
-                                 tc=0.05, mc=0.05, xc=0.05, mlc=0.05))
+    d = _decide(engine, _signals(t=0.6, m=0.6, x=0.6, ml=0.6, tc=0.05, mc=0.05, xc=0.05, mlc=0.05))
     assert d.action is Action.HOLD
 
 
@@ -92,8 +88,8 @@ def test_volatility_floor_sets_minimum_levels():
     """In a calm market the volatility floor sets the stop distance."""
     cfg = FusionConfig()
     engine = FusionEngine(cfg)
-    d = _decide(engine, _signals(t=0.8, m=0.7, x=0.8, ml=0.7),
-                ref=100_000.0, atr=1.0)  # tiny ATR -> floor binds
+    d = _decide(
+        engine, _signals(t=0.8, m=0.7, x=0.8, ml=0.7), ref=100_000.0, atr=1.0
+    )  # tiny ATR -> floor binds
     unit = 100_000.0 * cfg.min_volatility_fraction
-    assert d.reference_price - d.entry == pytest.approx(
-        cfg.entry_offset_vol_mult * unit, rel=1e-6)
+    assert d.reference_price - d.entry == pytest.approx(cfg.entry_offset_vol_mult * unit, rel=1e-6)

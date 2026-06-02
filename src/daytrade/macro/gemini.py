@@ -17,15 +17,14 @@ from typing import List
 
 import httpx
 
-from ..models import MacroSignal, OHLCV
+from ..models import OHLCV, MacroSignal
 from ..runtime import get_logger
 from .scenarios import SCENARIOS, get_scenario
 
 _log = get_logger("macro.gemini")
 
 _ENDPOINT = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.0-flash:generateContent"
+    "https://generativelanguage.googleapis.com/v1beta/models/" "gemini-2.0-flash:generateContent"
 )
 
 
@@ -38,16 +37,16 @@ class GeminiMacroAnalyzer:
 
     source = "gemini"
 
-    def __init__(self, api_key: str, allow_network: bool = False,
-                 timeout: float = 10.0) -> None:
+    def __init__(self, api_key: str, allow_network: bool = False, timeout: float = 10.0) -> None:
         if not api_key:
             raise MacroUnavailable("no GEMINI_API_KEY configured")
         self._api_key = api_key
         self._allow_network = allow_network
         self._timeout = timeout
 
-    def analyze(self, symbol: str, candles: List[OHLCV],
-                scenario: "str | None" = None) -> MacroSignal:
+    def analyze(
+        self, symbol: str, candles: List[OHLCV], scenario: str | None = None
+    ) -> MacroSignal:
         if scenario is not None:
             # An explicit scenario bypasses the LLM entirely.
             sc = get_scenario(scenario)
@@ -59,9 +58,15 @@ class GeminiMacroAnalyzer:
 
         ts = candles[-1].timestamp if candles else 0
         return MacroSignal(
-            symbol=symbol, timestamp=ts, bias=sc.bias, score=sc.score,
-            confidence=sc.confidence, risk_level=sc.risk_level,
-            regime_label=sc.label, source=self.source, headline=sc.headline,
+            symbol=symbol,
+            timestamp=ts,
+            bias=sc.bias,
+            score=sc.score,
+            confidence=sc.confidence,
+            risk_level=sc.risk_level,
+            regime_label=sc.label,
+            source=self.source,
+            headline=sc.headline,
             reasoning=[
                 f"Macro regime: {sc.label} (classified by Gemini)",
                 sc.headline,
@@ -82,9 +87,7 @@ class GeminiMacroAnalyzer:
         body = {"contents": [{"parts": [{"text": prompt}]}]}
         try:
             with httpx.Client(timeout=self._timeout) as client:
-                resp = client.post(
-                    _ENDPOINT, params={"key": self._api_key}, json=body
-                )
+                resp = client.post(_ENDPOINT, params={"key": self._api_key}, json=body)
                 resp.raise_for_status()
                 data = resp.json()
             text = data["candidates"][0]["content"]["parts"][0]["text"]
@@ -103,4 +106,4 @@ def _extract_json(text: str) -> str:
     end = text.rfind("}")
     if start == -1 or end == -1 or end < start:
         raise ValueError("no JSON object in Gemini response")
-    return text[start:end + 1]
+    return text[start : end + 1]

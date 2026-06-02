@@ -41,17 +41,21 @@ def _resample(candles: List[OHLCV], rule: str) -> pd.DataFrame:
     """Resample a 1m-candle list into the requested timeframe (pandas rule)."""
     if not candles:
         return pd.DataFrame()
-    df = pd.DataFrame({
-        "ts": [c.timestamp for c in candles],
-        "open": [c.open for c in candles],
-        "high": [c.high for c in candles],
-        "low":  [c.low for c in candles],
-        "close": [c.close for c in candles],
-        "volume": [c.volume for c in candles],
-    }).set_index("ts")
-    out = df.resample(rule).agg({
-        "open": "first", "high": "max", "low": "min",
-        "close": "last", "volume": "sum"}).dropna()
+    df = pd.DataFrame(
+        {
+            "ts": [c.timestamp for c in candles],
+            "open": [c.open for c in candles],
+            "high": [c.high for c in candles],
+            "low": [c.low for c in candles],
+            "close": [c.close for c in candles],
+            "volume": [c.volume for c in candles],
+        }
+    ).set_index("ts")
+    out = (
+        df.resample(rule)
+        .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
+        .dropna()
+    )
     return out
 
 
@@ -68,7 +72,7 @@ def _trend_slope(closes: pd.Series, window: int) -> float:
         return 0.0
     x = np.arange(window, dtype=float)
     x_dev = x - x.mean()
-    x_var = float((x_dev ** 2).sum())
+    x_var = float((x_dev**2).sum())
     cov = float(((seg - seg.mean()) * x_dev).sum())
     slope = cov / x_var
     return slope / seg[-1]
@@ -110,8 +114,9 @@ def check_higher_tf_alignment(
     bars_1h = _resample(candles_1m, "1h")
     if len(bars_15m) < window_15m or len(bars_1h) < window_1h:
         return MTFAlignmentResult(
-            True, f"insufficient higher-TF history "
-                  f"({len(bars_15m)} 15m / {len(bars_1h)} 1h bars)")
+            True,
+            f"insufficient higher-TF history " f"({len(bars_15m)} 15m / {len(bars_1h)} 1h bars)",
+        )
 
     slope_15m = _trend_slope(bars_15m["close"], window_15m)
     slope_1h = _trend_slope(bars_1h["close"], window_1h)

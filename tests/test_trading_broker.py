@@ -18,12 +18,9 @@ import pytest
 from daytrade.live import LiveBroker, LiveConfig, MockExchange
 from daytrade.models import Side
 from daytrade.observatory.trading_broker import (
-    ClosedPosition,
     DBPaperBroker,
     LiveBrokerAdapter,
-    OpenedPosition,
 )
-
 
 UTC = timezone.utc
 
@@ -42,8 +39,12 @@ def test_dbpaperbroker_open_calls_insert_paper_trade():
     db.insert_paper_trade.return_value = 42
     broker = DBPaperBroker(db, fee_bps=10.0)
     opened = broker.open_long(
-        "BTCUSDT", quantity=0.001, entry_price=100_000.0,
-        stop=99_500.0, target=101_000.0, timestamp=_ts(),
+        "BTCUSDT",
+        quantity=0.001,
+        entry_price=100_000.0,
+        stop=99_500.0,
+        target=101_000.0,
+        timestamp=_ts(),
     )
     assert opened.trade_id == 42
     assert opened.fill_price == 100_000.0
@@ -64,16 +65,19 @@ def test_dbpaperbroker_open_calls_insert_paper_trade():
 
 def test_dbpaperbroker_close_matches_pre_refactor_math():
     """The exact arithmetic the Observer ran before this refactor:
-        gross    = (exit - entry) * qty
-        fee      = (exit + entry) * qty * fee_bps / 10_000
-        pnl      = gross - fee
-        slippage = exit * 0.0004 * qty
+    gross    = (exit - entry) * qty
+    fee      = (exit + entry) * qty * fee_bps / 10_000
+    pnl      = gross - fee
+    slippage = exit * 0.0004 * qty
     """
     db = MagicMock()
     broker = DBPaperBroker(db, fee_bps=10.0, slippage_rate=0.0004)
     closed = broker.close_long(
-        trade_id=42, symbol="BTCUSDT", quantity=0.001,
-        entry_price=100_000.0, exit_price=101_000.0,
+        trade_id=42,
+        symbol="BTCUSDT",
+        quantity=0.001,
+        entry_price=100_000.0,
+        exit_price=101_000.0,
         timestamp=_ts(),
     )
     expected_gross = (101_000.0 - 100_000.0) * 0.001  # 1.0
@@ -85,7 +89,9 @@ def test_dbpaperbroker_close_matches_pre_refactor_math():
     assert closed.slippage == pytest.approx(expected_slippage)
     assert closed.fill_price == 101_000.0
     db.close_paper_trade.assert_called_once_with(
-        42, exit_price=101_000.0, pnl=pytest.approx(expected_pnl),
+        42,
+        exit_price=101_000.0,
+        pnl=pytest.approx(expected_pnl),
         fees=pytest.approx(expected_fee),
         slippage=pytest.approx(expected_slippage),
     )
@@ -95,8 +101,11 @@ def test_dbpaperbroker_close_negative_pnl_when_stopped_out():
     db = MagicMock()
     broker = DBPaperBroker(db, fee_bps=10.0)
     closed = broker.close_long(
-        trade_id=1, symbol="BTCUSDT", quantity=0.001,
-        entry_price=100_000.0, exit_price=99_500.0,
+        trade_id=1,
+        symbol="BTCUSDT",
+        quantity=0.001,
+        entry_price=100_000.0,
+        exit_price=99_500.0,
         timestamp=_ts(),
     )
     assert closed.pnl < 0
@@ -109,8 +118,7 @@ def test_dbpaperbroker_close_negative_pnl_when_stopped_out():
 
 def _live_broker() -> tuple[LiveBroker, MockExchange]:
     ex = MockExchange(starting_balance_usdt=1000.0)
-    cfg = LiveConfig(dry_run=True, max_stake_per_trade=250.0,
-                     max_daily_loss=200.0)
+    cfg = LiveConfig(dry_run=True, max_stake_per_trade=250.0, max_daily_loss=200.0)
     return LiveBroker(cfg, ex), ex
 
 
@@ -120,8 +128,12 @@ def test_live_adapter_open_routes_through_live_broker_and_persists():
     db.insert_paper_trade.return_value = 99
     adapter = LiveBrokerAdapter(live, db)
     opened = adapter.open_long(
-        "BTCUSDT", quantity=0.001, entry_price=100_000.0,
-        stop=99_500.0, target=101_000.0, timestamp=_ts(),
+        "BTCUSDT",
+        quantity=0.001,
+        entry_price=100_000.0,
+        stop=99_500.0,
+        target=101_000.0,
+        timestamp=_ts(),
     )
     assert opened.trade_id == 99
     # MockExchange applies 2 bps BUY slippage upward → fill_price > entry
@@ -141,12 +153,19 @@ def test_live_adapter_close_uses_real_fill_price():
     db.insert_paper_trade.return_value = 1
     adapter = LiveBrokerAdapter(live, db)
     opened = adapter.open_long(
-        "BTCUSDT", quantity=0.001, entry_price=100_000.0,
-        stop=99_500.0, target=101_000.0, timestamp=_ts(),
+        "BTCUSDT",
+        quantity=0.001,
+        entry_price=100_000.0,
+        stop=99_500.0,
+        target=101_000.0,
+        timestamp=_ts(),
     )
     closed = adapter.close_long(
-        trade_id=opened.trade_id, symbol="BTCUSDT", quantity=0.001,
-        entry_price=opened.fill_price, exit_price=101_000.0,
+        trade_id=opened.trade_id,
+        symbol="BTCUSDT",
+        quantity=0.001,
+        entry_price=opened.fill_price,
+        exit_price=101_000.0,
         timestamp=_ts() + timedelta(minutes=5),
     )
     # SELL slippage is downward in MockExchange
@@ -168,8 +187,12 @@ def test_live_adapter_propagates_broker_errors():
     adapter = LiveBrokerAdapter(failing_live, db)
     with pytest.raises(RuntimeError, match="stake cap"):
         adapter.open_long(
-            "BTCUSDT", quantity=0.001, entry_price=100_000.0,
-            stop=99_500.0, target=101_000.0, timestamp=_ts(),
+            "BTCUSDT",
+            quantity=0.001,
+            entry_price=100_000.0,
+            stop=99_500.0,
+            target=101_000.0,
+            timestamp=_ts(),
         )
     # Crucially: no DB write on a failed open
     db.insert_paper_trade.assert_not_called()
@@ -188,13 +211,13 @@ def test_observer_default_broker_is_dbpaperbroker():
     # Patch heavy-deps so we can construct an Observer without a real DB
     # or feed but still verify the broker assignment.
     with patch("daytrade.observatory.observer.ObservatoryDB"):
-        from daytrade.config.schema import (AppConfig, RiskConfig,
-                                            WatchlistConfig)
+        from daytrade.config.schema import AppConfig, WatchlistConfig
         from daytrade.observatory.observer import Observer
 
         cfg = AppConfig()
         obs = Observer(cfg, WatchlistConfig())
         from daytrade.observatory.trading_broker import DBPaperBroker
+
         assert isinstance(obs._broker, DBPaperBroker)
 
 

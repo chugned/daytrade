@@ -22,8 +22,8 @@ from .instance_lock import SingleInstanceLock, SingleInstanceLockError
 from .notify import (
     Level,
     LogNotifier,
-    NtfyNotifier,
     Notifier,
+    NtfyNotifier,
     TelegramNotifier,
     build_notifier,
 )

@@ -16,7 +16,9 @@ def _shadow(reader_balance: float = 750.0) -> tuple[ShadowExchange, MagicMock, M
     reader = MagicMock()
     reader.get_balance.return_value = reader_balance
     reader.get_position.return_value = Position(
-        symbol="BTCUSDT", quantity=0.0, avg_entry_price=0.0,
+        symbol="BTCUSDT",
+        quantity=0.0,
+        avg_entry_price=0.0,
     )
     reader.list_open_orders.return_value = []
     writer = MockExchange(starting_balance_usdt=999.99)  # will be overwritten
@@ -61,7 +63,9 @@ def test_get_balance_routes_to_reader():
 def test_get_position_routes_to_reader():
     shadow, reader, _ = _shadow()
     reader.get_position.return_value = Position(
-        symbol="ETHUSDT", quantity=0.5, avg_entry_price=3500.0,
+        symbol="ETHUSDT",
+        quantity=0.5,
+        avg_entry_price=3500.0,
     )
     pos = shadow.get_position("ETHUSDT")
     assert pos.quantity == 0.5
@@ -92,8 +96,11 @@ def test_list_open_orders_tolerates_reader_failure():
 def test_place_market_order_routes_to_writer_not_reader():
     shadow, reader, writer = _shadow(reader_balance=1000.0)
     order = ExchangeOrder(
-        client_order_id="shadow-1", symbol="BTCUSDT", side=Side.BUY,
-        quantity=0.001, reference_price=100_000.0,
+        client_order_id="shadow-1",
+        symbol="BTCUSDT",
+        side=Side.BUY,
+        quantity=0.001,
+        reference_price=100_000.0,
     )
     fill = shadow.place_market_order(order)
     assert fill.symbol == "BTCUSDT"
@@ -126,18 +133,21 @@ def test_full_shadow_session_no_real_writes():
     # Spy on its place_market_order to prove it's not called
     real_place_calls = []
     original = reader_mock.place_market_order
+
     def _spy(o):
         real_place_calls.append(o)
         return original(o)
+
     reader_mock.place_market_order = _spy  # type: ignore[method-assign]
 
     writer = MockExchange(starting_balance_usdt=0.0)
     shadow = ShadowExchange(reader=reader_mock, writer=writer)
-    broker = LiveBroker(LiveConfig(dry_run=True, max_stake_per_trade=200.0),
-                        shadow)
+    broker = LiveBroker(LiveConfig(dry_run=True, max_stake_per_trade=200.0), shadow)
 
     fill = broker.submit_market_order(
-        "BTCUSDT", Side.BUY, quantity=0.001,
+        "BTCUSDT",
+        Side.BUY,
+        quantity=0.001,
         reference_price=100_000.0,
     )
     assert fill.quantity == 0.001

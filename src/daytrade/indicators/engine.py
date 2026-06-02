@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from ..config.schema import IndicatorConfig
-from ..models import Bias, OHLCV, TechnicalSignal
+from ..models import OHLCV, Bias, TechnicalSignal
 from . import core
 from .frame import ohlcv_to_frame
 
@@ -86,8 +86,8 @@ class TechnicalEngine:
         # combined as a weighted mean — RSI gets extra weight at extremes
         # because an oversold/overbought reading is a high-conviction,
         # high-information mean-reversion signal.
-        sub: List[float] = []          # raw sub-scores (for agreement/std)
-        weighted: List[float] = []     # weight * score
+        sub: List[float] = []  # raw sub-scores (for agreement/std)
+        weighted: List[float] = []  # weight * score
         weights: List[float] = []
         reasoning: List[str] = []
 
@@ -119,8 +119,7 @@ class TechnicalEngine:
             _add(ema_score, self.EMA_WEIGHT)
             direction = "above" if ema_f >= ema_s else "below"
             reasoning.append(
-                f"EMA{cfg.ema_fast} {direction} EMA{cfg.ema_slow} "
-                f"({ema_gap * 100:+.2f}%)"
+                f"EMA{cfg.ema_fast} {direction} EMA{cfg.ema_slow} " f"({ema_gap * 100:+.2f}%)"
             )
 
         # --- MACD histogram: momentum read ---
@@ -177,10 +176,16 @@ class TechnicalEngine:
             momentum=mom_v,
             trend_slope=slope_v,
             indicators={
-                k: v for k, v in {
-                    "rsi": rsi_v, "ema_fast": ema_f, "ema_slow": ema_s,
-                    "macd": macd_v, "volatility": vol_v, "momentum": mom_v,
+                k: v
+                for k, v in {
+                    "rsi": rsi_v,
+                    "ema_fast": ema_f,
+                    "ema_slow": ema_s,
+                    "macd": macd_v,
+                    "volatility": vol_v,
+                    "momentum": mom_v,
                     "trend_slope": slope_v,
-                }.items() if v is not None
+                }.items()
+                if v is not None
             },
         )

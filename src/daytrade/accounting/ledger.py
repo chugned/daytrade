@@ -41,8 +41,8 @@ class AccountingReport:
     starting_equity: float
     ending_equity: float
     total_trades: int
-    simulated_profit: float          # sum of winning-trade PnL
-    simulated_loss: float            # sum of losing-trade PnL (<= 0)
+    simulated_profit: float  # sum of winning-trade PnL
+    simulated_loss: float  # sum of losing-trade PnL (<= 0)
     estimated_fees: float
     per_asset: Dict[str, AssetPnL] = field(default_factory=dict)
 
@@ -78,9 +78,13 @@ def build_accounting_report(
         gross_loss = sum(t.pnl for t in losses)
         fees = sum(t.fees for t in sym_trades)
         per_asset[symbol] = AssetPnL(
-            symbol=symbol, trades=len(sym_trades), wins=len(wins),
-            losses=len(losses), gross_profit=round(gross_profit, 2),
-            gross_loss=round(gross_loss, 2), fees=round(fees, 2),
+            symbol=symbol,
+            trades=len(sym_trades),
+            wins=len(wins),
+            losses=len(losses),
+            gross_profit=round(gross_profit, 2),
+            gross_loss=round(gross_loss, 2),
+            fees=round(fees, 2),
         )
         total_profit += gross_profit
         total_loss += gross_loss

@@ -59,6 +59,7 @@ def test_paper_broker_has_no_order_entry_to_real_market():
 def test_no_leverage_in_paper_broker():
     """Spot, long-only: cannot sell what you do not own (no shorting)."""
     from datetime import datetime, timezone
+
     from daytrade.config import load_config
     from daytrade.models import Side
 
@@ -66,20 +67,29 @@ def test_no_leverage_in_paper_broker():
     cfg = load_config(load_dotenv_file=False)
     with pytest.raises(ValueError, match="no open position"):
         broker.submit_market_order(
-            "o1", "BTCUSDT", Side.SELL, 1.0, reference_price=100.0,
-            available_liquidity=100.0, risk_config=cfg.risk,
+            "o1",
+            "BTCUSDT",
+            Side.SELL,
+            1.0,
+            reference_price=100.0,
+            available_liquidity=100.0,
+            risk_config=cfg.risk,
             timestamp=datetime.now(timezone.utc),
         )
 
 
 # --- sandbox / credential safety -------------------------------------------
 
+
 def test_withdrawal_permission_is_rejected():
     """An API key with withdrawal scope is refused — never allowed."""
     from daytrade.config import load_config
     from daytrade.exchanges.credentials import (
-        ApiKeyPermissions, WithdrawalPermissionError, enforce_key_safety,
+        ApiKeyPermissions,
+        WithdrawalPermissionError,
+        enforce_key_safety,
     )
+
     cfg = load_config(load_dotenv_file=False)
     with pytest.raises(WithdrawalPermissionError):
         enforce_key_safety(ApiKeyPermissions(can_withdraw=True), cfg.sandbox)
@@ -89,8 +99,11 @@ def test_mainnet_key_is_rejected():
     """A non-testnet (mainnet) key is refused for sandbox use."""
     from daytrade.config import load_config
     from daytrade.exchanges.credentials import (
-        ApiKeyPermissions, MainnetKeyError, enforce_key_safety,
+        ApiKeyPermissions,
+        MainnetKeyError,
+        enforce_key_safety,
     )
+
     cfg = load_config(load_dotenv_file=False)
     with pytest.raises(MainnetKeyError):
         enforce_key_safety(ApiKeyPermissions(is_testnet=False), cfg.sandbox)
@@ -99,13 +112,15 @@ def test_mainnet_key_is_rejected():
 def test_sandbox_execution_is_testnet_only():
     """Every sandbox base URL is a testnet; mainnet hosts are rejected."""
     from daytrade.exchanges.sandbox import (
-        _TESTNET_URLS, _assert_testnet_url, SandboxSafetyError,
+        _TESTNET_URLS,
+        SandboxSafetyError,
+        _assert_testnet_url,
     )
+
     for url in _TESTNET_URLS.values():
         assert "testnet" in url
         _assert_testnet_url(url)  # must not raise
-    for mainnet in ("https://api.binance.com", "https://api.bybit.com",
-                    "https://api.kraken.com"):
+    for mainnet in ("https://api.binance.com", "https://api.bybit.com", "https://api.kraken.com"):
         with pytest.raises(SandboxSafetyError):
             _assert_testnet_url(mainnet)
 
@@ -114,6 +129,7 @@ def test_sandbox_disabled_by_default():
     """With default config, no sandbox client is built (pure paper mode)."""
     from daytrade.config import load_config
     from daytrade.exchanges.sandbox import build_sandbox_client
+
     cfg = load_config(load_dotenv_file=False)
     assert cfg.sandbox.enabled is False
     assert build_sandbox_client(cfg) is None
@@ -122,11 +138,13 @@ def test_sandbox_disabled_by_default():
 def test_config_cannot_disable_withdrawal_rejection():
     """sandbox.reject_withdrawal_keys cannot be turned off."""
     from daytrade.config import ConfigError, load_config_dict
+
     with pytest.raises(ConfigError):
         load_config_dict({"sandbox": {"reject_withdrawal_keys": False}})
 
 
 # --- no money-movement code exists -----------------------------------------
+
 
 def test_no_money_movement_functions_exist():
     """No function in the codebase performs a bank transfer / withdrawal.
@@ -153,9 +171,11 @@ def test_no_money_movement_functions_exist():
 
 # --- risk limits and kill switch override BUY signals ----------------------
 
+
 def test_risk_limit_overrides_buy_signal():
     """A breached loss limit blocks an entry even with capital available."""
     from datetime import datetime, timedelta, timezone
+
     from daytrade.config import load_config
     from daytrade.risk import RiskEngine
 
@@ -177,12 +197,13 @@ def test_kill_switch_forces_hold():
     from daytrade.pipeline import AnalysisPipeline
 
     cfg = load_config(load_dotenv_file=False)
-    candles = generate_random_walk("BTCUSDT", n_bars=200, start_price=30_000.0,
-                                   drift=0.001, volatility=0.004, seed=3)
+    candles = generate_random_walk(
+        "BTCUSDT", n_bars=200, start_price=30_000.0, drift=0.001, volatility=0.004, seed=3
+    )
     book = build_orderbook("BTCUSDT", candles[-1].close, jitter=0.0)
     result = AnalysisPipeline(cfg).analyze(
-        candles, book, reference_price=candles[-1].close,
-        macro_scenario="exchange_collapse")
+        candles, book, reference_price=candles[-1].close, macro_scenario="exchange_collapse"
+    )
     assert result.kill_switch.active
     assert result.decision.action is Action.HOLD
 
@@ -202,6 +223,7 @@ def test_illiquid_coin_is_rejected():
 
 # --- observatory: still paper-only -----------------------------------------
 
+
 def test_no_wallet_code_exists():
     """No function connects, links, or imports a crypto wallet."""
     import re
@@ -211,7 +233,8 @@ def test_no_wallet_code_exists():
     forbidden = re.compile(
         r"def\s+(connect_wallet|link_wallet|wallet_connect|import_wallet|"
         r"unlock_wallet|sign_transaction|broadcast_tx)\w*\s*\(",
-        re.IGNORECASE)
+        re.IGNORECASE,
+    )
     offenders = []
     for path in src.rglob("*.py"):
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
@@ -223,6 +246,7 @@ def test_no_wallet_code_exists():
 def test_observatory_observer_places_no_real_orders():
     """The observer's broker path is simulation only — connect_live raises."""
     from daytrade.paper import PaperBroker
+
     broker = PaperBroker(10_000.0)
     with pytest.raises(NotImplementedError):
         broker.connect_live()
@@ -231,6 +255,7 @@ def test_observatory_observer_places_no_real_orders():
 def test_dashboard_reports_paper_only(tmp_path):
     """The dashboard health endpoint asserts paper-only, no real trading."""
     from fastapi.testclient import TestClient
+
     from daytrade.dashboard import create_app
 
     client = TestClient(create_app(tmp_path / "obs.db"))
@@ -242,6 +267,6 @@ def test_dashboard_reports_paper_only(tmp_path):
 def test_observatory_has_no_live_order_method():
     """The observer exposes no order-entry-to-a-real-exchange method."""
     from daytrade.observatory import Observer
-    forbidden = {"place_order", "submit_live_order", "send_order",
-                 "connect_wallet", "withdraw"}
+
+    forbidden = {"place_order", "submit_live_order", "send_order", "connect_wallet", "withdraw"}
     assert forbidden.isdisjoint(dir(Observer))

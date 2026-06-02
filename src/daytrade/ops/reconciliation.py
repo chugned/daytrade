@@ -34,9 +34,11 @@ class ReconciliationReport:
 
     def summary(self) -> str:
         if self.ok:
-            return (f"state OK — {self.open_paper_positions} open paper "
-                    f"position(s), {self.unevaluated_predictions} prediction(s) "
-                    f"awaiting evaluation")
+            return (
+                f"state OK — {self.open_paper_positions} open paper "
+                f"position(s), {self.unevaluated_predictions} prediction(s) "
+                f"awaiting evaluation"
+            )
         return "state DIVERGENT: " + "; ".join(self.anomalies)
 
 
@@ -71,8 +73,7 @@ def reconcile_paper_state(db: ObservatoryDB) -> ReconciliationReport:
         if side == "sell" and not (target < entry < stop):
             bad.append(f"short levels broken: target {target} entry {entry} stop {stop}")
         if bad:
-            anomalies.append(
-                f"open trade #{t.get('id')} {t.get('symbol')}: " + ", ".join(bad))
+            anomalies.append(f"open trade #{t.get('id')} {t.get('symbol')}: " + ", ".join(bad))
 
     # Unevaluated predictions — informational, not an anomaly until huge.
     unevaluated = db.unevaluated_predictions(limit=1)
@@ -86,20 +87,23 @@ def reconcile_paper_state(db: ObservatoryDB) -> ReconciliationReport:
     if backlog_count >= big_backlog_threshold:
         anomalies.append(
             f"unevaluated prediction backlog >= {big_backlog_threshold} "
-            "— evaluation may be lagging; check per-cycle cap")
+            "— evaluation may be lagging; check per-cycle cap"
+        )
 
     # Orphan outcomes: outcome rows whose prediction id is gone.
     orphan_outcomes = 0
     try:
         rows = db._all(
             "SELECT COUNT(*) AS n FROM prediction_outcomes "
-            "WHERE prediction_id NOT IN (SELECT id FROM predictions)")
+            "WHERE prediction_id NOT IN (SELECT id FROM predictions)"
+        )
         orphan_outcomes = int(rows[0]["n"]) if rows else 0
     except Exception:
         pass
     if orphan_outcomes:
-        anomalies.append(f"{orphan_outcomes} orphan outcome row(s) reference "
-                         "missing predictions")
+        anomalies.append(
+            f"{orphan_outcomes} orphan outcome row(s) reference " "missing predictions"
+        )
 
     return ReconciliationReport(
         ok=not anomalies,

@@ -24,7 +24,6 @@ from .metrics import (
     roll_up_day,
 )
 from .observer import CycleSummary, Observer
-from .real_feed import RealMarketFeed, build_feed
 from .prediction_tracker import (
     HORIZONS,
     PredictionMemory,
@@ -37,6 +36,7 @@ from .readiness import (
     compute_readiness,
     readiness_level,
 )
+from .real_feed import RealMarketFeed, build_feed
 from .safety_score import (
     SafetyAssessment,
     SafetyInputs,

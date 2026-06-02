@@ -30,7 +30,8 @@ class SingleInstanceLockError(RuntimeError):
     def __init__(self, name: str, other_pid: int, lock_path: Path) -> None:
         super().__init__(
             f"another '{name}' instance is already running (pid={other_pid}). "
-            f"Stop it first, or remove the stale lock at {lock_path}.")
+            f"Stop it first, or remove the stale lock at {lock_path}."
+        )
         self.name = name
         self.other_pid = other_pid
         self.lock_path = lock_path
@@ -79,7 +80,7 @@ class SingleInstanceLock:
 
     # -- context-manager --------------------------------------------------
 
-    def __enter__(self) -> "SingleInstanceLock":
+    def __enter__(self) -> SingleInstanceLock:
         self.acquire()
         return self
 

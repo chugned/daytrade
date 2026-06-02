@@ -28,7 +28,7 @@ import hmac
 import time
 import urllib.parse
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import httpx
 
@@ -56,8 +56,11 @@ _TESTNET_URLS: Dict[str, str] = {
 # Hosts that must never be reached for execution. Used by the URL guard as a
 # belt-and-braces check in addition to the positive allowlist.
 _FORBIDDEN_HOST_FRAGMENTS = (
-    "api.binance.com", "api-gcp.binance.com", "api.bybit.com",
-    "api.kraken.com", "api.coinbase.com",
+    "api.binance.com",
+    "api-gcp.binance.com",
+    "api.bybit.com",
+    "api.kraken.com",
+    "api.coinbase.com",
 )
 
 
@@ -79,8 +82,9 @@ def _assert_testnet_url(url: str) -> None:
 class SandboxExchangeClient:
     """A testnet-only signed exchange client (Binance / Bybit testnet)."""
 
-    def __init__(self, credentials: ApiCredentials, config: SandboxConfig,
-                 timeout: float = 10.0) -> None:
+    def __init__(
+        self, credentials: ApiCredentials, config: SandboxConfig, timeout: float = 10.0
+    ) -> None:
         self.exchange = credentials.exchange
         if self.exchange not in _TESTNET_URLS:
             raise SandboxSafetyError(f"no testnet for exchange {self.exchange!r}")
@@ -96,14 +100,16 @@ class SandboxExchangeClient:
         _assert_testnet_url(self.base_url)  # guard again before every call
         return httpx.Client(base_url=self.base_url, timeout=self._timeout)
 
-    def _binance_signed(self, method: str, path: str,
-                        params: Optional[Dict[str, object]] = None) -> dict:
+    def _binance_signed(
+        self, method: str, path: str, params: Optional[Dict[str, object]] = None
+    ) -> dict:
         params = dict(params or {})
         params["timestamp"] = int(time.time() * 1000)
         params["recvWindow"] = 5000
         query = urllib.parse.urlencode(params)
-        signature = hmac.new(self._creds.api_secret.encode(),
-                             query.encode(), hashlib.sha256).hexdigest()
+        signature = hmac.new(
+            self._creds.api_secret.encode(), query.encode(), hashlib.sha256
+        ).hexdigest()
         url = f"{path}?{query}&signature={signature}"
         headers = {"X-MBX-APIKEY": self._creds.api_key}
         with self._client() as client:
@@ -111,8 +117,9 @@ class SandboxExchangeClient:
             resp.raise_for_status()
             return resp.json()
 
-    def _bybit_signed(self, method: str, path: str,
-                      params: Optional[Dict[str, object]] = None) -> dict:
+    def _bybit_signed(
+        self, method: str, path: str, params: Optional[Dict[str, object]] = None
+    ) -> dict:
         params = dict(params or {})
         ts = str(int(time.time() * 1000))
         recv = "5000"
@@ -123,11 +130,13 @@ class SandboxExchangeClient:
             body = None
         else:
             import json as _json
+
             body = _json.dumps(params, separators=(",", ":"))
             sign_src = ts + self._creds.api_key + recv + body
             url = path
-        signature = hmac.new(self._creds.api_secret.encode(),
-                             sign_src.encode(), hashlib.sha256).hexdigest()
+        signature = hmac.new(
+            self._creds.api_secret.encode(), sign_src.encode(), hashlib.sha256
+        ).hexdigest()
         headers = {
             "X-BAPI-API-KEY": self._creds.api_key,
             "X-BAPI-SIGN": signature,
@@ -153,18 +162,19 @@ class SandboxExchangeClient:
         try:
             permissions = self._read_permissions()
         except httpx.HTTPError as exc:
-            raise ExchangeError(
-                f"sandbox: could not reach {self.exchange} testnet: {exc}"
-            ) from exc
+            raise ExchangeError(f"sandbox: could not reach {self.exchange} testnet: {exc}") from exc
 
         # The single, non-negotiable safety gate.
         enforce_key_safety(permissions, self._config)
         self._creds = ApiCredentials(
-            exchange=self._creds.exchange, api_key=self._creds.api_key,
-            api_secret=self._creds.api_secret, permissions=permissions,
+            exchange=self._creds.exchange,
+            api_key=self._creds.api_key,
+            api_secret=self._creds.api_secret,
+            permissions=permissions,
         )
-        _log.info("sandbox key verified (%s testnet): scopes=%s",
-                  self.exchange, permissions.describe())
+        _log.info(
+            "sandbox key verified (%s testnet): scopes=%s", self.exchange, permissions.describe()
+        )
         return permissions
 
     def _read_permissions(self) -> ApiKeyPermissions:
@@ -196,10 +206,12 @@ class SandboxExchangeClient:
         """Return free testnet balances per asset."""
         if self.exchange == "binance":
             acct = self._binance_signed("GET", "/api/v3/account")
-            return {b["asset"]: float(b["free"])
-                    for b in acct.get("balances", []) if float(b["free"]) > 0}
-        wallet = self._bybit_signed("GET", "/v5/account/wallet-balance",
-                                    {"accountType": "UNIFIED"})
+            return {
+                b["asset"]: float(b["free"])
+                for b in acct.get("balances", [])
+                if float(b["free"]) > 0
+            }
+        wallet = self._bybit_signed("GET", "/v5/account/wallet-balance", {"accountType": "UNIFIED"})
         out: Dict[str, float] = {}
         for acc in (wallet.get("result") or {}).get("list", []):
             for coin in acc.get("coin", []):
@@ -215,8 +227,9 @@ class SandboxExchangeClient:
         """
         perms = self._creds.permissions
         if perms is None:
-            raise SandboxSafetyError("credentials not verified — call "
-                                     "verify_credentials() first")
+            raise SandboxSafetyError(
+                "credentials not verified — call " "verify_credentials() first"
+            )
         if not perms.can_trade or self._config.require_read_only_keys:
             raise SandboxSafetyError(
                 "testnet order placement requires a trade-scoped key and "
@@ -225,16 +238,28 @@ class SandboxExchangeClient:
         _assert_testnet_url(self.base_url)  # final guard before sending
 
         if self.exchange == "binance":
-            resp = self._binance_signed("POST", "/api/v3/order", {
-                "symbol": symbol, "side": side.value.upper(),
-                "type": "MARKET", "quantity": f"{quantity:.8f}",
-            })
+            resp = self._binance_signed(
+                "POST",
+                "/api/v3/order",
+                {
+                    "symbol": symbol,
+                    "side": side.value.upper(),
+                    "type": "MARKET",
+                    "quantity": f"{quantity:.8f}",
+                },
+            )
             return self._fill_from_binance(symbol, side, resp)
-        resp = self._bybit_signed("POST", "/v5/order/create", {
-            "category": "spot", "symbol": symbol,
-            "side": side.value.capitalize(), "orderType": "Market",
-            "qty": f"{quantity:.8f}",
-        })
+        resp = self._bybit_signed(
+            "POST",
+            "/v5/order/create",
+            {
+                "category": "spot",
+                "symbol": symbol,
+                "side": side.value.capitalize(),
+                "orderType": "Market",
+                "qty": f"{quantity:.8f}",
+            },
+        )
         return self._fill_from_bybit(symbol, side, quantity, resp)
 
     @staticmethod
@@ -247,23 +272,35 @@ class SandboxExchangeClient:
         avg_price = notional / qty
         fee = sum(float(f.get("commission", 0.0)) for f in fills)
         return Fill(
-            order_id=str(resp.get("orderId", "testnet")), symbol=symbol,
-            side=side, quantity=qty, price=avg_price, requested_price=avg_price,
-            fee=fee, slippage=0.0, timestamp=datetime.now(timezone.utc),
+            order_id=str(resp.get("orderId", "testnet")),
+            symbol=symbol,
+            side=side,
+            quantity=qty,
+            price=avg_price,
+            requested_price=avg_price,
+            fee=fee,
+            slippage=0.0,
+            timestamp=datetime.now(timezone.utc),
             is_partial=resp.get("status") == "PARTIALLY_FILLED",
         )
 
     @staticmethod
-    def _fill_from_bybit(symbol: str, side: Side, quantity: float,
-                         resp: dict) -> Fill:
+    def _fill_from_bybit(symbol: str, side: Side, quantity: float, resp: dict) -> Fill:
         result = resp.get("result") or {}
         order_id = str(result.get("orderId", "testnet"))
         # Bybit's create response does not include fill price; the caller
         # marks at the reference price. Treated as a clean testnet fill.
         return Fill(
-            order_id=order_id, symbol=symbol, side=side, quantity=quantity,
-            price=1.0, requested_price=1.0, fee=0.0, slippage=0.0,
-            timestamp=datetime.now(timezone.utc), is_partial=False,
+            order_id=order_id,
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            price=1.0,
+            requested_price=1.0,
+            fee=0.0,
+            slippage=0.0,
+            timestamp=datetime.now(timezone.utc),
+            is_partial=False,
         )
 
 
@@ -277,13 +314,16 @@ def build_sandbox_client(config: AppConfig) -> Optional[SandboxExchangeClient]:
     if not sb.enabled:
         return None
     if not config.runtime.allow_network:
-        _log.warning("sandbox enabled but runtime.allow_network is false — "
-                     "staying in paper mode")
+        _log.warning(
+            "sandbox enabled but runtime.allow_network is false — " "staying in paper mode"
+        )
         return None
     credentials = load_sandbox_credentials(sb.exchange)
     if credentials is None:
-        _log.warning("sandbox enabled but no %s testnet keys configured — "
-                     "staying in paper mode", sb.exchange)
+        _log.warning(
+            "sandbox enabled but no %s testnet keys configured — " "staying in paper mode",
+            sb.exchange,
+        )
         return None
     client = SandboxExchangeClient(credentials, sb)
     client.verify_credentials()  # raises on any unsafe key

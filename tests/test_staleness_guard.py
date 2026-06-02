@@ -37,12 +37,14 @@ class _StaleFeed:
 
 def _make_observer(tmp_path, max_age_seconds: int = 300, feed=None):
     cfg = load_config(load_dotenv_file=False)
-    new_runtime = cfg.runtime.model_copy(
-        update={"max_data_age_seconds": max_age_seconds})
+    new_runtime = cfg.runtime.model_copy(update={"max_data_age_seconds": max_age_seconds})
     cfg = cfg.model_copy(update={"runtime": new_runtime})
-    obs = Observer(cfg, WatchlistConfig(symbols=["BTCUSDT"]),
-                   db=ObservatoryDB(tmp_path / "obs.db"),
-                   feed=feed or LiveMockFeed())
+    obs = Observer(
+        cfg,
+        WatchlistConfig(symbols=["BTCUSDT"]),
+        db=ObservatoryDB(tmp_path / "obs.db"),
+        feed=feed or LiveMockFeed(),
+    )
     obs.start()
     return obs
 
@@ -61,11 +63,10 @@ def test_fresh_data_is_observed(tmp_path):
 def test_stale_data_is_skipped(tmp_path):
     """Candles older than the floor -> no assessment, activity-feed warning."""
     frozen = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
-    now = frozen + timedelta(seconds=400)   # 400 s in the future
-    obs = _make_observer(tmp_path, max_age_seconds=120,
-                         feed=_StaleFeed(frozen))
+    now = frozen + timedelta(seconds=400)  # 400 s in the future
+    obs = _make_observer(tmp_path, max_age_seconds=120, feed=_StaleFeed(frozen))
     summary = obs.run_once(now)
-    assert summary.tradeable == 0   # nothing was assessed
+    assert summary.tradeable == 0  # nothing was assessed
     # An activity-feed event explicitly tagged "stale data".
     events = obs.db.recent_activity(limit=10)
     assert any("stale data" in (e.get("detail") or "") for e in events)

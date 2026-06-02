@@ -102,7 +102,7 @@ def triple_barrier_label(
         stop = close[i] - sd[i]
         target = close[i] + td[i]
         end = min(i + max_hold, n - 1)
-        resolved: "float | None" = None
+        resolved: float | None = None
         for j in range(i + 1, end + 1):
             if low[j] <= stop:
                 resolved = 0.0

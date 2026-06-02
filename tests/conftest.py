@@ -36,8 +36,7 @@ def _isolate_observatory_state(tmp_path, monkeypatch):
     from daytrade.observatory import learning as _learning
     from daytrade.observatory import observer as _observer
 
-    monkeypatch.setattr(_learning, "LEARNING_STATE_PATH",
-                        tmp_path / "learning_state.json")
+    monkeypatch.setattr(_learning, "LEARNING_STATE_PATH", tmp_path / "learning_state.json")
     monkeypatch.setattr(_observer, "_NOW_PATH", tmp_path / "now.json")
     monkeypatch.setattr(_observer, "_OBSERVER_REPORTS", tmp_path / "observer")
     monkeypatch.setattr(_observer, "_LOG_FILE", tmp_path / "daytrade.log")
@@ -52,22 +51,25 @@ def config():
 @pytest.fixture(scope="session")
 def uptrend_candles():
     """A deterministic upward-drifting candle series."""
-    return generate_random_walk("BTCUSDT", n_bars=300, start_price=30_000.0,
-                                drift=0.0010, volatility=0.004, seed=3)
+    return generate_random_walk(
+        "BTCUSDT", n_bars=300, start_price=30_000.0, drift=0.0010, volatility=0.004, seed=3
+    )
 
 
 @pytest.fixture(scope="session")
 def flat_candles():
     """A deterministic, low-drift candle series."""
-    return generate_random_walk("BTCUSDT", n_bars=300, start_price=30_000.0,
-                                drift=0.0, volatility=0.005, seed=8)
+    return generate_random_walk(
+        "BTCUSDT", n_bars=300, start_price=30_000.0, drift=0.0, volatility=0.005, seed=8
+    )
 
 
 @pytest.fixture(scope="session")
 def long_candles():
     """A longer series suitable for ML training / walk-forward."""
-    return generate_random_walk("BTCUSDT", n_bars=700, start_price=30_000.0,
-                                drift=0.0003, volatility=0.006, seed=5)
+    return generate_random_walk(
+        "BTCUSDT", n_bars=700, start_price=30_000.0, drift=0.0003, volatility=0.006, seed=5
+    )
 
 
 @pytest.fixture(scope="session")

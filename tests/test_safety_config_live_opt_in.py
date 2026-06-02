@@ -19,7 +19,6 @@ from pydantic import ValidationError
 
 from daytrade.config.schema import LIVE_ACKNOWLEDGEMENT_PHRASE, SafetyConfig
 
-
 # ---------------------------------------------------------------------------
 # Default = paper. is_live should be False.
 # ---------------------------------------------------------------------------

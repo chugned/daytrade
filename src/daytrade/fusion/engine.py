@@ -22,7 +22,6 @@ from typing import Dict, List, Optional
 from ..config.schema import FusionConfig
 from ..models import (
     Action,
-    Bias,
     MacroSignal,
     MicrostructureSignal,
     MLSignal,
@@ -88,8 +87,9 @@ class FusionEngine:
         w = cfg.weights
         layers = [
             _Layer("technical", technical.score, technical.confidence, w.technical),
-            _Layer("microstructure", microstructure.score,
-                   microstructure.confidence, w.microstructure),
+            _Layer(
+                "microstructure", microstructure.score, microstructure.confidence, w.microstructure
+            ),
             _Layer("macro", macro.score, macro.confidence, w.macro),
             _Layer("ml", ml.score, ml.confidence, w.ml),
         ]
@@ -103,9 +103,7 @@ class FusionEngine:
                 f"{layer.name}: score={layer.score:+.2f} "
                 f"conf={layer.confidence:.2f} weight={layer.weight:.2f}"
             )
-        reasoning.append(
-            f"Fused score {fused_score:+.3f} | decision confidence {confidence:.3f}"
-        )
+        reasoning.append(f"Fused score {fused_score:+.3f} | decision confidence {confidence:.3f}")
 
         action = self._resolve_action(fused_score, confidence, kill_switch, reasoning)
 
@@ -141,7 +139,7 @@ class FusionEngine:
 
     # -- internals -----------------------------------------------------------
 
-    def _fuse(self, layers: List[_Layer]) -> "tuple[float, float, float]":
+    def _fuse(self, layers: List[_Layer]) -> tuple[float, float, float]:
         """Return ``(fused_score, weighted_confidence, agreement)``."""
         eff_total = sum(layer.effective_weight for layer in layers)
         if eff_total <= 0:
@@ -151,9 +149,7 @@ class FusionEngine:
             fused = _clip(fused / eff_total)
 
         weight_total = sum(layer.weight for layer in layers) or 1.0
-        weighted_conf = sum(
-            layer.weight * layer.confidence for layer in layers
-        ) / weight_total
+        weighted_conf = sum(layer.weight * layer.confidence for layer in layers) / weight_total
 
         # Agreement: weighted share of layers voting with the fused direction.
         fused_sign = _sign(fused)
@@ -167,8 +163,7 @@ class FusionEngine:
         agreement = agree_num / weight_total
         return fused, weighted_conf, agreement
 
-    def _confidence(self, fused: float, weighted_conf: float,
-                    agreement: float) -> float:
+    def _confidence(self, fused: float, weighted_conf: float, agreement: float) -> float:
         """Blend layer confidence, score magnitude and agreement into [0,1].
 
         Layer confidence dominates by design: if no analysis layer is
@@ -198,23 +193,21 @@ class FusionEngine:
             return Action.HOLD
         if confidence < self.config.min_confidence:
             reasoning.append(
-                f"HOLD — confidence {confidence:.3f} below minimum "
-                f"{self.config.min_confidence}"
+                f"HOLD — confidence {confidence:.3f} below minimum " f"{self.config.min_confidence}"
             )
             return Action.HOLD
         return Action.BUY if fused > 0 else Action.SELL
 
-    def _volatility_unit(self, reference_price: float,
-                         atr: Optional[float]) -> float:
+    def _volatility_unit(self, reference_price: float, atr: Optional[float]) -> float:
         """Volatility unit U = price * clip(ATR/price, floor, cap)."""
         cfg = self.config
         frac = 0.0 if atr is None else atr / reference_price
-        frac = max(cfg.min_volatility_fraction,
-                   min(cfg.max_volatility_fraction, frac))
+        frac = max(cfg.min_volatility_fraction, min(cfg.max_volatility_fraction, frac))
         return reference_price * frac
 
-    def _levels(self, action: Action, reference_price: float,
-                atr: Optional[float]) -> "tuple[float, float, float]":
+    def _levels(
+        self, action: Action, reference_price: float, atr: Optional[float]
+    ) -> tuple[float, float, float]:
         """Compute (entry, stop, target) for a directional action."""
         cfg = self.config
         unit = self._volatility_unit(reference_price, atr)

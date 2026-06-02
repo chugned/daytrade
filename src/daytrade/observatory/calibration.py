@@ -17,8 +17,9 @@ it never invents a correction it cannot support. Paper / simulation only.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, Optional, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
@@ -43,7 +44,7 @@ class ConfidenceCalibrator:
         cls,
         samples: Iterable[Tuple[Optional[float], Optional[object]]],
         min_samples: int = MIN_CALIBRATION_SAMPLES,
-    ) -> "ConfidenceCalibrator":
+    ) -> ConfidenceCalibrator:
         """Fit from ``(stated_confidence, was_correct)`` pairs.
 
         Returns an unfitted (identity) calibrator when there is too little

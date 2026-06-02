@@ -5,10 +5,8 @@ from __future__ import annotations
 import logging
 import os
 import random
-from typing import Optional
 
 import numpy as np
-
 from rich.logging import RichHandler
 
 _CONFIGURED = False
@@ -50,8 +48,8 @@ def seed_everything(seed: int = 42) -> None:
 def add_file_logging(
     path: str,
     *,
-    max_bytes: int = 50 * 1024 * 1024,   # 50 MB per file
-    backup_count: int = 5,               # keep 5 rotations = 250 MB ceiling
+    max_bytes: int = 50 * 1024 * 1024,  # 50 MB per file
+    backup_count: int = 5,  # keep 5 rotations = 250 MB ceiling
 ) -> None:
     """Attach a SIZE-ROTATING file handler to the root logger.
 
@@ -69,8 +67,10 @@ def add_file_logging(
     root = logging.getLogger()
     abspath = _os.path.abspath(path)
     for handler in root.handlers:
-        if isinstance(handler, logging.FileHandler) and \
-                getattr(handler, "baseFilename", None) == abspath:
+        if (
+            isinstance(handler, logging.FileHandler)
+            and getattr(handler, "baseFilename", None) == abspath
+        ):
             return  # already attached
     file_handler = RotatingFileHandler(
         path,
@@ -78,13 +78,11 @@ def add_file_logging(
         backupCount=backup_count,
         encoding="utf-8",
     )
-    file_handler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     root.addHandler(file_handler)
 
 
-def apply_runtime(level: str = "INFO", deterministic: bool = True,
-                   seed: int = 42) -> None:
+def apply_runtime(level: str = "INFO", deterministic: bool = True, seed: int = 42) -> None:
     """One-shot runtime setup used by the CLI before any work begins."""
     setup_logging(level)
     if deterministic:

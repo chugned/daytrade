@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -32,8 +32,9 @@ def _perms(**overrides) -> KeyPermissions:
 # assert_trade_only
 # ---------------------------------------------------------------------------
 
+
 def test_trade_only_key_passes():
-    assert_trade_only(_perms())   # no raise
+    assert_trade_only(_perms())  # no raise
 
 
 def test_withdrawal_permission_is_refused():
@@ -66,6 +67,7 @@ def test_is_trade_only_property():
 # ---------------------------------------------------------------------------
 # inspect_key (mocked HTTP)
 # ---------------------------------------------------------------------------
+
 
 def test_inspect_key_signs_request_and_maps_flags():
     """Mock Binance to return a 'trade-only' key payload; check parsing."""

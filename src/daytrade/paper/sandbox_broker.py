@@ -24,7 +24,7 @@ from ..config.schema import RiskConfig
 from ..exchanges.sandbox import SandboxExchangeClient
 from ..models import Fill, PortfolioSnapshot, Position, Side
 from ..runtime import get_logger
-from .broker import PaperBroker, TradeRecord
+from .broker import PaperBroker
 
 _log = get_logger("paper.sandbox_broker")
 
@@ -33,8 +33,9 @@ class SandboxBroker:
     """A broker that books trades on a paper portfolio, optionally mirroring
     execution onto an exchange testnet."""
 
-    def __init__(self, paper_broker: PaperBroker,
-                 client: Optional[SandboxExchangeClient] = None) -> None:
+    def __init__(
+        self, paper_broker: PaperBroker, client: Optional[SandboxExchangeClient] = None
+    ) -> None:
         self._paper = paper_broker
         self._client = client
 
@@ -69,15 +70,20 @@ class SandboxBroker:
         reporting, PnL and trade logs work identically across modes.
         """
         if self.is_testnet_execution:
-            _log.info("placing TESTNET %s order: %s %.6f %s",
-                      side.value, symbol, quantity, symbol)
+            _log.info("placing TESTNET %s order: %s %.6f %s", side.value, symbol, quantity, symbol)
             fill = self._client.place_test_order(symbol, side, quantity)
             self._paper.apply_external_fill(fill)
             return fill
         # Simulated execution (default / read-only key path).
         return self._paper.submit_market_order(
-            order_id, symbol, side, quantity, reference_price,
-            available_liquidity, risk_config, timestamp,
+            order_id,
+            symbol,
+            side,
+            quantity,
+            reference_price,
+            available_liquidity,
+            risk_config,
+            timestamp,
         )
 
     # -- portfolio passthrough ----------------------------------------------
@@ -107,8 +113,7 @@ class SandboxBroker:
     def equity(self, mark_prices: Dict[str, float]) -> float:
         return self._paper.equity(mark_prices)
 
-    def snapshot(self, timestamp: datetime,
-                 mark_prices: Dict[str, float]) -> PortfolioSnapshot:
+    def snapshot(self, timestamp: datetime, mark_prices: Dict[str, float]) -> PortfolioSnapshot:
         return self._paper.snapshot(timestamp, mark_prices)
 
     def testnet_balances(self) -> Dict[str, float]:

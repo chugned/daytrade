@@ -24,7 +24,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ACTIVITY_PATH = REPO_ROOT / "data" / "agent_activity.jsonl"
 ROADMAP_PATH = REPO_ROOT / "data" / "agent_roadmap.json"

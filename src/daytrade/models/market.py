@@ -46,7 +46,8 @@ class ConsensusPrice(DaytradeModel):
     sources_used: List[str] = Field(default_factory=list)
     sources_rejected: List[str] = Field(default_factory=list)
     dispersion: float = Field(
-        default=0.0, ge=0,
+        default=0.0,
+        ge=0,
         description="Relative spread of accepted source prices (max-min)/median.",
     )
     degraded: bool = Field(
@@ -81,7 +82,7 @@ class OHLCV(DaytradeModel):
         return normalize_timestamp(v)
 
     @model_validator(mode="after")
-    def _check_ohlc(self) -> "OHLCV":
+    def _check_ohlc(self) -> OHLCV:
         hi, lo = self.high, self.low
         if hi < lo:
             raise ValueError(f"high ({hi}) < low ({lo})")
@@ -135,7 +136,7 @@ class OrderBookSnapshot(DaytradeModel):
         return normalize_timestamp(v)
 
     @model_validator(mode="after")
-    def _check_sorted_and_crossed(self) -> "OrderBookSnapshot":
+    def _check_sorted_and_crossed(self) -> OrderBookSnapshot:
         bid_prices = [lvl.price for lvl in self.bids]
         ask_prices = [lvl.price for lvl in self.asks]
         if bid_prices != sorted(bid_prices, reverse=True):

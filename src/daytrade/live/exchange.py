@@ -15,7 +15,7 @@ what we use.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Protocol
 
@@ -160,8 +160,8 @@ class MockExchange:
                     is_partial=False,
                 )
             raise OrderRejected(
-                f"clientOrderId {order.client_order_id} already used "
-                f"with status {prior.status}")
+                f"clientOrderId {order.client_order_id} already used " f"with status {prior.status}"
+            )
 
         # Slippage: BUY hits higher, SELL hits lower (the same way the
         # paper broker models it). This is the same fill math.
@@ -178,14 +178,16 @@ class MockExchange:
             if self._balances.get("USDT", 0.0) < cost - 1e-9:
                 raise OrderRejected(
                     f"insufficient USDT: need {cost:.2f}, have "
-                    f"{self._balances.get('USDT', 0.0):.2f}")
+                    f"{self._balances.get('USDT', 0.0):.2f}"
+                )
             self._balances["USDT"] -= cost
             base = order.symbol.replace("USDT", "")
             book = self._books.setdefault(order.symbol, _MockBook())
             new_qty = book.qty + order.quantity
             book.avg_price = (
                 (book.avg_price * book.qty + fill_price * order.quantity) / new_qty
-                if new_qty > 0 else 0.0
+                if new_qty > 0
+                else 0.0
             )
             book.qty = new_qty
             self._balances[base] = self._balances.get(base, 0.0) + order.quantity
@@ -194,15 +196,15 @@ class MockExchange:
             if book is None or book.qty < order.quantity - 1e-9:
                 raise OrderRejected(
                     f"insufficient {order.symbol} qty to sell: requested "
-                    f"{order.quantity}, have {book.qty if book else 0}")
+                    f"{order.quantity}, have {book.qty if book else 0}"
+                )
             self._balances["USDT"] += notional - fee
             book.qty -= order.quantity
             if book.qty < 1e-12:
                 book.qty = 0.0
                 book.avg_price = 0.0
             base = order.symbol.replace("USDT", "")
-            self._balances[base] = max(
-                0.0, self._balances.get(base, 0.0) - order.quantity)
+            self._balances[base] = max(0.0, self._balances.get(base, 0.0) - order.quantity)
 
         ts = self._clock()
         fill = Fill(

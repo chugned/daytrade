@@ -16,12 +16,10 @@ from daytrade.ops.remote_log import (
 
 def test_handler_batches_and_flushes_at_batch_size():
     with patch("daytrade.ops.remote_log.httpx.post") as post:
-        h = RemoteLogHandler("https://example.test/logs",
-                             batch_size=3, flush_interval=999)
+        h = RemoteLogHandler("https://example.test/logs", batch_size=3, flush_interval=999)
         try:
             for i in range(3):
-                rec = logging.LogRecord("t", logging.WARNING, "x", 1,
-                                        f"msg {i}", None, None)
+                rec = logging.LogRecord("t", logging.WARNING, "x", 1, f"msg {i}", None, None)
                 h.emit(rec)
         finally:
             h.close()
@@ -34,13 +32,10 @@ def test_handler_batches_and_flushes_at_batch_size():
 
 def test_handler_swallows_http_errors_silently():
     """A logging handler that crashes is worse than one that misses messages."""
-    with patch("daytrade.ops.remote_log.httpx.post",
-               side_effect=RuntimeError("network down")):
-        h = RemoteLogHandler("https://example.test/logs",
-                             batch_size=1, flush_interval=999)
+    with patch("daytrade.ops.remote_log.httpx.post", side_effect=RuntimeError("network down")):
+        h = RemoteLogHandler("https://example.test/logs", batch_size=1, flush_interval=999)
         try:
-            rec = logging.LogRecord("t", logging.WARNING, "x", 1, "boom",
-                                    None, None)
+            rec = logging.LogRecord("t", logging.WARNING, "x", 1, "boom", None, None)
             # Must not raise.
             h.emit(rec)
         finally:

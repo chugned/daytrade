@@ -21,20 +21,23 @@ def test_different_buckets_produce_different_ids():
     """A new minute should generate a fresh id (a new genuine decision)."""
     t1 = datetime(2026, 5, 31, 12, 0, 0, tzinfo=timezone.utc)
     t2 = t1 + timedelta(seconds=61)
-    assert generate_client_order_id("BTCUSDT", "buy", t1, bucket_seconds=60) \
-           != generate_client_order_id("BTCUSDT", "buy", t2, bucket_seconds=60)
+    assert generate_client_order_id(
+        "BTCUSDT", "buy", t1, bucket_seconds=60
+    ) != generate_client_order_id("BTCUSDT", "buy", t2, bucket_seconds=60)
 
 
 def test_different_symbols_produce_different_ids():
     ts = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
-    assert (generate_client_order_id("BTCUSDT", "buy", ts)
-            != generate_client_order_id("ETHUSDT", "buy", ts))
+    assert generate_client_order_id("BTCUSDT", "buy", ts) != generate_client_order_id(
+        "ETHUSDT", "buy", ts
+    )
 
 
 def test_different_sides_produce_different_ids():
     ts = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
-    assert (generate_client_order_id("BTCUSDT", "buy", ts)
-            != generate_client_order_id("BTCUSDT", "sell", ts))
+    assert generate_client_order_id("BTCUSDT", "buy", ts) != generate_client_order_id(
+        "BTCUSDT", "sell", ts
+    )
 
 
 def test_id_fits_exchange_length_limit():

@@ -40,8 +40,10 @@ def test_mock_exchange_orderbook_uncrossed():
 
 
 def test_consensus_averages_clean_sources():
-    ticks = [PriceTick(symbol="BTC", exchange=e, price=p, timestamp=0)
-             for e, p in [("a", 100.0), ("b", 102.0), ("c", 101.0)]]
+    ticks = [
+        PriceTick(symbol="BTC", exchange=e, price=p, timestamp=0)
+        for e, p in [("a", 100.0), ("b", 102.0), ("c", 101.0)]
+    ]
     cp = compute_consensus(ticks, "BTC")
     assert cp.price == pytest.approx(101.0)
     assert cp.n_sources == 3
@@ -49,9 +51,10 @@ def test_consensus_averages_clean_sources():
 
 def test_consensus_rejects_flash_crash_outlier():
     """A wildly divergent price is rejected, not averaged in."""
-    ticks = [PriceTick(symbol="BTC", exchange=e, price=p, timestamp=0)
-             for e, p in [("a", 100.0), ("b", 101.0), ("c", 100.5),
-                          ("d", 10.0)]]
+    ticks = [
+        PriceTick(symbol="BTC", exchange=e, price=p, timestamp=0)
+        for e, p in [("a", 100.0), ("b", 101.0), ("c", 100.5), ("d", 10.0)]
+    ]
     cp = compute_consensus(ticks, "BTC")
     assert "D" in cp.sources_rejected
     assert cp.price == pytest.approx(100.5)  # mean of the 3 clean prints
@@ -61,8 +64,7 @@ def test_consensus_excludes_down_sources():
     ticks = [
         PriceTick(symbol="BTC", exchange="a", price=100.0, timestamp=0),
         PriceTick(symbol="BTC", exchange="b", price=100.0, timestamp=0),
-        PriceTick(symbol="BTC", exchange="c", price=999.0, timestamp=0,
-                  status=ExchangeStatus.DOWN),
+        PriceTick(symbol="BTC", exchange="c", price=999.0, timestamp=0, status=ExchangeStatus.DOWN),
     ]
     cp = compute_consensus(ticks, "BTC")
     assert "C" in cp.sources_rejected
@@ -70,8 +72,9 @@ def test_consensus_excludes_down_sources():
 
 
 def test_consensus_all_down_raises():
-    ticks = [PriceTick(symbol="BTC", exchange="a", price=1.0, timestamp=0,
-                       status=ExchangeStatus.DOWN)]
+    ticks = [
+        PriceTick(symbol="BTC", exchange="a", price=1.0, timestamp=0, status=ExchangeStatus.DOWN)
+    ]
     with pytest.raises(ValueError):
         compute_consensus(ticks, "BTC")
 

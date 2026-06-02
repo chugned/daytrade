@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import List
 
-import pytest
-
 from daytrade.models import OHLCV
 from daytrade.observatory.mean_reversion import (
     MeanReversionConfig,
@@ -24,13 +22,21 @@ def _candles(closes: List[float], *, vols=None) -> List[OHLCV]:
         o = closes[i - 1] if i > 0 else closes[i]
         h = max(o, c) * 1.0005
         l = min(o, c) * 0.9995
-        out.append(OHLCV(symbol="X", timestamp=t0 + timedelta(minutes=i),
-                         open=o, high=h, low=l, close=c, volume=v[i]))
+        out.append(
+            OHLCV(
+                symbol="X",
+                timestamp=t0 + timedelta(minutes=i),
+                open=o,
+                high=h,
+                low=l,
+                close=c,
+                volume=v[i],
+            )
+        )
     return out
 
 
-def _calm_then_drop(drop_pct: float = -0.015, length: int = 50,
-                    vol_spike: float = 3.0):
+def _calm_then_drop(drop_pct: float = -0.015, length: int = 50, vol_spike: float = 3.0):
     """Build a calm series followed by a sharp drop in the last 15 bars."""
     pre_n = max(1, length - 15)
     closes = [100.0] * pre_n

@@ -26,7 +26,7 @@ from rich.table import Table
 
 from .. import __version__
 from ..accounting import build_accounting_report, export_tax_csv
-from ..approval import TradeProposal, render_approval_card, request_approval
+from ..approval import TradeProposal, request_approval
 from ..backtest import Backtester
 from ..config import ConfigError, load_config
 from ..demo import (
@@ -36,13 +36,21 @@ from ..demo import (
     build_demo_orderbook,
 )
 from ..exchanges import generate_random_walk
-from ..exchanges.sandbox import build_sandbox_client
 from ..exchanges.credentials import load_sandbox_credentials
+from ..exchanges.sandbox import build_sandbox_client
 from ..ml import PredictiveModel, build_dataset
 from ..models import Action, ModelKind, Side
+from ..observatory import (
+    LearningSession,
+    ObservatoryDB,
+    Observer,
+    build_feed,
+    write_daily_report,
+)
+from ..observatory.database import DEFAULT_DB_PATH
+from ..observatory.prediction_tracker import build_prediction_memory
 from ..paper import PaperBroker
 from ..pipeline import AnalysisPipeline
-from ..risk import RiskEngine
 from ..reporting import (
     backtest_report_dict,
     backtest_report_markdown,
@@ -58,18 +66,8 @@ from ..reporting import (
     save_json,
     save_text,
 )
-from ..observatory import (
-    LearningSession,
-    LiveMockFeed,
-    Observer,
-    ObservatoryDB,
-    build_feed,
-    load_learning_state,
-    write_daily_report,
-)
-from ..observatory.database import DEFAULT_DB_PATH
-from ..observatory.prediction_tracker import build_prediction_memory
 from ..research import INTERVAL_MS, render_research, run_research
+from ..risk import RiskEngine
 from ..runtime import apply_runtime, get_logger
 from ..safety.guard import forbid_real_trading
 from ..validation import walk_forward_validate
@@ -83,7 +81,7 @@ from ..watchlist import (
 app = typer.Typer(
     add_completion=False,
     help="daytrade — educational trading research & paper-trading platform. "
-         "Cannot place real trades.",
+    "Cannot place real trades.",
 )
 _console = Console()
 _log = get_logger("cli")
@@ -100,16 +98,21 @@ def _setup(profile: Optional[str]):
     except ConfigError as exc:
         _console.print(f"[bold red]Config error:[/bold red] {exc}")
         raise typer.Exit(code=1)
-    apply_runtime(config.runtime.log_level, config.runtime.deterministic,
-                  config.runtime.random_seed)
+    apply_runtime(
+        config.runtime.log_level, config.runtime.deterministic, config.runtime.random_seed
+    )
     return config
 
 
 def _mock_candles(config, n_bars: int, drift: float, volatility: float):
     """Deterministic mock candle series for paper / backtest / training."""
     return generate_random_walk(
-        symbol=config.symbol, n_bars=n_bars, start_price=30_000.0,
-        drift=drift, volatility=volatility, seed=config.runtime.random_seed,
+        symbol=config.symbol,
+        n_bars=n_bars,
+        start_price=30_000.0,
+        drift=drift,
+        volatility=volatility,
+        seed=config.runtime.random_seed,
     )
 
 
@@ -157,7 +160,9 @@ def demo(
     orderbook = build_demo_orderbook()
     pipeline = AnalysisPipeline(cfg)
     result = pipeline.analyze(
-        candles, orderbook, reference_price=DEMO_REFERENCE_PRICE,
+        candles,
+        orderbook,
+        reference_price=DEMO_REFERENCE_PRICE,
         macro_scenario=DEMO_MACRO_SCENARIO,
     )
     render_decision(result, _console)
@@ -179,8 +184,7 @@ def paper(
     result = Backtester(cfg).run(candles)
     m = result.metrics
     _console.print(
-        f"Paper session over {m.bars} bars — "
-        f"[bold]{m.total_trades}[/bold] simulated trades."
+        f"Paper session over {m.bars} bars — " f"[bold]{m.total_trades}[/bold] simulated trades."
     )
     render_backtest(result, _console)
     _console.print(
@@ -218,8 +222,7 @@ def train(
     candles = _mock_candles(cfg, bars, drift=0.0002, volatility=0.006)
 
     dataset = build_dataset(candles, cfg)
-    _console.print(f"Dataset: {len(dataset)} samples, "
-                    f"class balance {dataset.class_balance}")
+    _console.print(f"Dataset: {len(dataset)} samples, " f"class balance {dataset.class_balance}")
     model = PredictiveModel(ModelKind(cfg.ml.model_kind), cfg.runtime.random_seed)
     train_result = model.fit(dataset)
     _console.print(
@@ -254,8 +257,7 @@ def simulate(
 
     # 2. Walk-forward validate.
     report = walk_forward_validate(candles[:split], cfg)
-    _console.print(f"[2/3] Walk-forward mean test accuracy "
-                    f"{report.mean_test_accuracy:.3f}")
+    _console.print(f"[2/3] Walk-forward mean test accuracy " f"{report.mean_test_accuracy:.3f}")
     render_walkforward(report, _console)
 
     # 3. Backtest the remainder with the trained model (out-of-sample).
@@ -272,35 +274,36 @@ def simulate(
 def watchlist(
     profile: Optional[str] = typer.Option(None, help="Config profile."),
     universe: str = typer.Option(
-        "config", help="'config' (watchlist.symbols) or 'demo' (mixed set)."),
+        "config", help="'config' (watchlist.symbols) or 'demo' (mixed set)."
+    ),
 ) -> None:
     """Screen the multi-asset watchlist for liquidity / quality."""
     cfg = _setup(profile)
     _console.rule("[bold]daytrade — watchlist screening")
-    symbols = (demo_universe_symbols() if universe == "demo"
-               else cfg.watchlist.symbols)
+    symbols = demo_universe_symbols() if universe == "demo" else cfg.watchlist.symbols
     data = build_mock_universe(symbols, seed=cfg.runtime.random_seed)
     screener = WatchlistScreener(cfg.watchlist)
 
     table = Table(title="Asset screening", header_style="bold")
-    for col in ("Symbol", "Status", "24h volume", "Spread", "Book notional",
-                "1h move"):
+    for col in ("Symbol", "Status", "24h volume", "Spread", "Book notional", "1h move"):
         table.add_column(col)
     rejects = []
     for r in screener.screen(data):
         m = r.metrics
         style = "green" if r.approved else "red"
         table.add_row(
-            r.symbol, f"[{style}]{r.status}[/{style}]",
-            f"${m.volume_24h_usd:,.0f}", f"{m.spread_bps:.1f} bps",
-            f"${m.book_notional_usd:,.0f}", f"{m.move_1h_pct * 100:+.1f}%",
+            r.symbol,
+            f"[{style}]{r.status}[/{style}]",
+            f"${m.volume_24h_usd:,.0f}",
+            f"{m.spread_bps:.1f} bps",
+            f"${m.book_notional_usd:,.0f}",
+            f"{m.move_1h_pct * 100:+.1f}%",
         )
         if not r.approved:
             rejects.append(r)
     _console.print(table)
     for r in rejects:
-        _console.print(f"[red]{r.symbol} rejected:[/red] " +
-                       "; ".join(r.rejections))
+        _console.print(f"[red]{r.symbol} rejected:[/red] " + "; ".join(r.rejections))
     approved = screener.approved_symbols(data)
     _console.print(f"\nTradeable universe: [bold]{approved}[/bold]")
 
@@ -316,8 +319,8 @@ def approve(
     candles = build_demo_candles()
     orderbook = build_demo_orderbook()
     result = AnalysisPipeline(cfg).analyze(
-        candles, orderbook, reference_price=DEMO_REFERENCE_PRICE,
-        macro_scenario=DEMO_MACRO_SCENARIO)
+        candles, orderbook, reference_price=DEMO_REFERENCE_PRICE, macro_scenario=DEMO_MACRO_SCENARIO
+    )
     decision = result.decision
 
     broker = PaperBroker(cfg.paper.starting_cash, cfg.paper.base_currency)
@@ -330,8 +333,15 @@ def approve(
     equity = cfg.paper.starting_cash
     sizing = risk.size(equity, decision.entry, decision.stop)
     liquidity = orderbook.depth("ask")
-    preview = risk.execute("preview", decision.symbol, Side.BUY, sizing.quantity,
-                           decision.entry, liquidity, candles[-1].timestamp)
+    preview = risk.execute(
+        "preview",
+        decision.symbol,
+        Side.BUY,
+        sizing.quantity,
+        decision.entry,
+        liquidity,
+        candles[-1].timestamp,
+    )
 
     micro = result.microstructure
     liq_warn = None
@@ -341,12 +351,19 @@ def approve(
         liq_warn = f"wide spread ({micro.spread_bps:.1f} bps)"
 
     proposal = TradeProposal(
-        symbol=decision.symbol, action=decision.action, entry=decision.entry,
-        stop=decision.stop, target=decision.target, confidence=decision.confidence,
-        quantity=sizing.quantity, risk_amount=sizing.risk_amount,
+        symbol=decision.symbol,
+        action=decision.action,
+        entry=decision.entry,
+        stop=decision.stop,
+        target=decision.target,
+        confidence=decision.confidence,
+        quantity=sizing.quantity,
+        risk_amount=sizing.risk_amount,
         expected_slippage_cost=preview.slippage * preview.quantity,
-        expected_fee=preview.fee, reasoning=decision.reasoning,
-        liquidity_warning=liq_warn, kill_switch_active=result.kill_switch.active,
+        expected_fee=preview.fee,
+        reasoning=decision.reasoning,
+        liquidity_warning=liq_warn,
+        kill_switch_active=result.kill_switch.active,
         kill_switch_reasons=result.kill_switch.reasons,
         execution_mode="simulated",
     )
@@ -357,12 +374,20 @@ def approve(
         return
 
     fill = broker.submit_market_order(
-        "approved", decision.symbol, Side.BUY, sizing.quantity, decision.entry,
-        liquidity, cfg.risk, candles[-1].timestamp)
+        "approved",
+        decision.symbol,
+        Side.BUY,
+        sizing.quantity,
+        decision.entry,
+        liquidity,
+        cfg.risk,
+        candles[-1].timestamp,
+    )
     _console.print(
         f"[green]PAPER-EXECUTED[/green] (simulated): bought "
         f"{fill.quantity:.6f} {decision.symbol} @ {fill.price:,.2f} "
-        f"(slippage {fill.slippage:,.2f}, fee {fill.fee:,.2f})")
+        f"(slippage {fill.slippage:,.2f}, fee {fill.fee:,.2f})"
+    )
     _console.print(f"Cash remaining: {broker.cash:,.2f} {cfg.paper.base_currency}")
 
 
@@ -378,7 +403,8 @@ def accounting(
     candles = _mock_candles(cfg, bars, drift=0.0004, volatility=0.005)
     result = Backtester(cfg).run(candles)
     report = build_accounting_report(
-        result.trades, cfg.paper.starting_cash, result.metrics.ending_equity)
+        result.trades, cfg.paper.starting_cash, result.metrics.ending_equity
+    )
 
     table = Table(title="Simulated accounting", header_style="bold")
     table.add_column("Item")
@@ -395,8 +421,9 @@ def accounting(
         for col in ("Asset", "Trades", "W/L", "Net PnL", "Fees"):
             per.add_column(col)
         for sym, a in report.per_asset.items():
-            per.add_row(sym, str(a.trades), f"{a.wins}/{a.losses}",
-                        f"{a.net_pnl:+,.2f}", f"{a.fees:,.2f}")
+            per.add_row(
+                sym, str(a.trades), f"{a.wins}/{a.losses}", f"{a.net_pnl:+,.2f}", f"{a.fees:,.2f}"
+            )
         _console.print(per)
 
     _console.print("[dim]Simulated paper data — not tax advice, not a filing.[/dim]")
@@ -464,9 +491,13 @@ def sandbox_check(
         proof.append(f"PaperBroker.connect_live() raises: {exc}")
     proof.append("sandbox execution is restricted to a testnet-URL allowlist")
     proof.append("API keys with withdrawal permission are rejected on connect")
-    _console.print(Panel("\n".join(f"✓ {p}" for p in proof),
-                         title="Real execution is structurally disabled",
-                         border_style="green"))
+    _console.print(
+        Panel(
+            "\n".join(f"✓ {p}" for p in proof),
+            title="Real execution is structurally disabled",
+            border_style="green",
+        )
+    )
 
 
 def _load_observer_model():
@@ -489,8 +520,10 @@ def learn(
     days: int = typer.Option(30, help="Length of the learning window, in days."),
     interval: int = typer.Option(300, help="Seconds between observation cycles."),
     real_data: bool = typer.Option(
-        True, "--real-data/--mock-data",
-        help="Use live Binance public market data (read-only) vs the simulator."),
+        True,
+        "--real-data/--mock-data",
+        help="Use live Binance public market data (read-only) vs the simulator.",
+    ),
 ) -> None:
     """Run the multi-day Paper Trading Learning Observatory (Ctrl+C to stop).
 
@@ -505,37 +538,55 @@ def learn(
     # Single-instance lock — refuse to start if another learn process is up.
     # See daytrade.ops.instance_lock; the lock auto-releases on a clean exit.
     from daytrade.ops import SingleInstanceLock, SingleInstanceLockError
+
     _learn_lock = SingleInstanceLock("learn")
     try:
         _learn_lock.acquire()
     except SingleInstanceLockError as exc:
         _console.print(f"[red]Refusing to start:[/red] {exc}")
         raise typer.Exit(code=2)
-    _console.print("Paper / simulation only. No real trading, wallets, or "
-                    "money movement. Ctrl+C to pause; the window resumes on "
-                    "restart.")
-    _console.print(("Market data: [bold]LIVE Binance public data[/bold] "
-                    "(read-only, no API key)" if real_data else
-                    "Market data: deterministic offline simulator") + "\n")
+    _console.print(
+        "Paper / simulation only. No real trading, wallets, or "
+        "money movement. Ctrl+C to pause; the window resumes on "
+        "restart."
+    )
+    _console.print(
+        (
+            "Market data: [bold]LIVE Binance public data[/bold] " "(read-only, no API key)"
+            if real_data
+            else "Market data: deterministic offline simulator"
+        )
+        + "\n"
+    )
     db = ObservatoryDB()
-    session = LearningSession.resume_or_create(db, target_days=days,
-                                               interval_seconds=interval)
-    observer = Observer(cfg, load_watchlist_config(), db=db,
-                        feed=build_feed(cfg), model=_load_observer_model(),
-                        learning_session=session)
+    session = LearningSession.resume_or_create(db, target_days=days, interval_seconds=interval)
+    observer = Observer(
+        cfg,
+        load_watchlist_config(),
+        db=db,
+        feed=build_feed(cfg),
+        model=_load_observer_model(),
+        learning_session=session,
+    )
     from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc)
     _console.print(
         f"Learning session: day {session.day_number(now)}/{days}, "
-        f"phase '{session.phase(now)}', {session.cycles_completed} cycles done.")
-    _console.print(f"Observing {len(observer.watchlist_config.symbols)} symbols "
-                   f"every {interval}s. Open the dashboard to watch progress.\n")
+        f"phase '{session.phase(now)}', {session.cycles_completed} cycles done."
+    )
+    _console.print(
+        f"Observing {len(observer.watchlist_config.symbols)} symbols "
+        f"every {interval}s. Open the dashboard to watch progress.\n"
+    )
     try:
         observer.run_forever(interval)
     finally:
         _learn_lock.release()
-    _console.print("\n[green]Learning observer stopped.[/green] "
-                   "Re-run 'trading-bot learn' to resume the window.")
+    _console.print(
+        "\n[green]Learning observer stopped.[/green] "
+        "Re-run 'trading-bot learn' to resume the window."
+    )
 
 
 @app.command()
@@ -545,20 +596,24 @@ def shadow(
     api_key_env: str = typer.Option(
         "DAYTRADE_BINANCE_KEY",
         help="Env var with the Binance trade-only API key. If unset, "
-             "ShadowExchange uses a pure-mock reader (no real-Binance "
-             "balance lookup)."),
-    api_secret_env: str = typer.Option("DAYTRADE_BINANCE_SECRET",
-                                       help="Env var with the API secret."),
+        "ShadowExchange uses a pure-mock reader (no real-Binance "
+        "balance lookup).",
+    ),
+    api_secret_env: str = typer.Option(
+        "DAYTRADE_BINANCE_SECRET", help="Env var with the API secret."
+    ),
     mock_starting_usdt: float = typer.Option(
         1000.0,
         help="Starting USDT for the MockExchange writer (only used when "
-             "credentials are NOT provided; otherwise the real Binance "
-             "balance overrides this)."),
+        "credentials are NOT provided; otherwise the real Binance "
+        "balance overrides this).",
+    ),
     db_path: Optional[str] = typer.Option(
         None,
         help="Path to the shadow DB. Defaults to "
-             "artifacts/observatory-shadow.db so the shadow ledger is "
-             "kept SEPARATE from the existing paper ledger."),
+        "artifacts/observatory-shadow.db so the shadow ledger is "
+        "kept SEPARATE from the existing paper ledger.",
+    ),
 ) -> None:
     """Run the engine in SHADOW MODE — real Binance reads, fake order writes.
 
@@ -581,10 +636,12 @@ def shadow(
     Paper / simulation only at the order layer. No real orders.
     """
     import os as _os
+
     os.environ["DAYTRADE_ALLOW_NETWORK"] = "true"
     cfg = _setup(profile)
     _console.rule("[bold]daytrade — SHADOW MODE")
     from daytrade.ops import SingleInstanceLock, SingleInstanceLockError
+
     _shadow_lock = SingleInstanceLock("shadow")
     try:
         _shadow_lock.acquire()
@@ -594,7 +651,10 @@ def shadow(
 
     # Build the broker chain.
     from daytrade.live import (
-        BinanceExchange, LiveBroker, LiveConfig, MockExchange,
+        BinanceExchange,
+        LiveBroker,
+        LiveConfig,
+        MockExchange,
         ShadowExchange,
     )
     from daytrade.observatory.trading_broker import LiveBrokerAdapter
@@ -606,8 +666,7 @@ def shadow(
     writer = MockExchange(starting_balance_usdt=mock_starting_usdt)
 
     if api_key and api_secret:
-        _console.print(
-            "[yellow]Validating Binance API key permissions…[/yellow]")
+        _console.print("[yellow]Validating Binance API key permissions…[/yellow]")
         try:
             perms = inspect_key(api_key, api_secret)
         except Exception as exc:  # noqa: BLE001
@@ -615,41 +674,46 @@ def shadow(
             raise typer.Exit(code=2)
         _console.print(
             f"Key trade={perms.can_trade} withdraw={perms.can_withdraw} "
-            f"internal_transfer={perms.can_internal_transfer}")
+            f"internal_transfer={perms.can_internal_transfer}"
+        )
         if perms.can_withdraw or perms.can_internal_transfer:
             _console.print(
                 "[red]REFUSED:[/red] key has withdrawal or internal-"
                 "transfer permission. Disable those on the Binance API "
                 "settings and retry. Shadow mode will NOT proceed with "
-                "a key that could drain the account.")
+                "a key that could drain the account."
+            )
             raise typer.Exit(code=2)
         try:
             reader = BinanceExchange(
-                api_key=api_key, api_secret=api_secret,
+                api_key=api_key,
+                api_secret=api_secret,
                 permissions=perms,
                 writes_enabled=False,  # belt + suspenders
             )
         except Exception as exc:  # noqa: BLE001
             _console.print(f"[red]Could not build Binance reader:[/red] {exc}")
             raise typer.Exit(code=2)
-        _console.print(
-            "[green]✓[/green] Binance reader online (writes disabled).")
+        _console.print("[green]✓[/green] Binance reader online (writes disabled).")
     else:
         _console.print(
             "[yellow]No API credentials in env — using a mock reader. "
             "This validates wiring but does not test against real "
-            "Binance balance state.[/yellow]")
+            "Binance balance state.[/yellow]"
+        )
         reader = MockExchange(starting_balance_usdt=mock_starting_usdt)
 
     shadow_exchange = ShadowExchange(reader=reader, writer=writer)
     live_broker = LiveBroker(
-        LiveConfig(dry_run=True), shadow_exchange,
+        LiveConfig(dry_run=True),
+        shadow_exchange,
     )
     # Keep the shadow ledger separate from the live paper ledger so
     # the comparison dashboard can show them side-by-side and so a bad
     # shadow run never contaminates real paper history.
-    shadow_db_path = (Path(db_path) if db_path
-                      else DEFAULT_DB_PATH.with_name("observatory-shadow.db"))
+    shadow_db_path = (
+        Path(db_path) if db_path else DEFAULT_DB_PATH.with_name("observatory-shadow.db")
+    )
     _console.print(f"Shadow DB: {shadow_db_path}")
     db = ObservatoryDB(path=shadow_db_path)
     adapter = LiveBrokerAdapter(live_broker, db)
@@ -659,7 +723,8 @@ def shadow(
         f"(synced from {'real Binance' if api_key else 'mock reader'})\n"
         "[bold]Orders are routed to the in-memory MockExchange. "
         "No real orders will be placed.[/bold]\n"
-        f"Cycle interval: {interval}s. Ctrl+C to stop.\n")
+        f"Cycle interval: {interval}s. Ctrl+C to stop.\n"
+    )
 
     model = None
     model_path = _MODELS / "model.pkl"
@@ -671,12 +736,16 @@ def shadow(
             _console.print(f"[yellow]ML model not loaded:[/yellow] {exc}")
 
     observer = Observer(
-        cfg, load_watchlist_config(),
-        db=db, feed=build_feed(cfg), model=model, broker=adapter,
+        cfg,
+        load_watchlist_config(),
+        db=db,
+        feed=build_feed(cfg),
+        model=model,
+        broker=adapter,
     )
     _console.print(
-        f"Observing {len(observer.watchlist_config.symbols)} symbols "
-        f"every {interval}s.\n")
+        f"Observing {len(observer.watchlist_config.symbols)} symbols " f"every {interval}s.\n"
+    )
     try:
         observer.run_forever(interval)
     finally:
@@ -687,11 +756,12 @@ def shadow(
 @app.command(name="shadow-compare")
 def shadow_compare(
     paper_db: str = typer.Option(
-        str(DEFAULT_DB_PATH),
-        help="Path to the existing paper observatory DB."),
+        str(DEFAULT_DB_PATH), help="Path to the existing paper observatory DB."
+    ),
     shadow_db: str = typer.Option(
         str(DEFAULT_DB_PATH.with_name("observatory-shadow.db")),
-        help="Path to the shadow DB written by 'daytrade shadow'."),
+        help="Path to the shadow DB written by 'daytrade shadow'.",
+    ),
 ) -> None:
     """Side-by-side ledger: existing paper bot vs shadow-mode bot.
 
@@ -704,10 +774,10 @@ def shadow_compare(
     Read-only. Touches no files outside the two SQLite paths.
     """
     from pathlib import Path as _P
-    from datetime import datetime as _dt
+
     paths = {"PAPER": _P(paper_db), "SHADOW": _P(shadow_db)}
-    summaries: "dict[str, dict]" = {}
-    recent: "dict[str, list]" = {}
+    summaries: dict[str, dict] = {}
+    recent: dict[str, list] = {}
     for name, p in paths.items():
         if not p.exists():
             _console.print(f"[yellow]{name} DB missing:[/yellow] {p}")
@@ -721,9 +791,12 @@ def shadow_compare(
         fees = sum((t.get("fees") or 0.0) for t in closed)
         slip = sum((t.get("slippage") or 0.0) for t in closed)
         summaries[name] = {
-            "closed": n, "open": len(opens), "pnl": pnl,
+            "closed": n,
+            "open": len(opens),
+            "pnl": pnl,
             "win_rate": (wins / n * 100) if n else 0.0,
-            "fees": fees, "slip": slip,
+            "fees": fees,
+            "slip": slip,
         }
         recent[name] = closed[-5:]  # newest 5
 
@@ -734,18 +807,19 @@ def shadow_compare(
     _console.rule("[bold]Shadow vs Paper — side-by-side ledger")
     _console.print(f"{'Metric':<22}{'PAPER':>14}{'SHADOW':>14}{'Δ':>12}")
     _console.print("-" * 62)
-    for label, key in (("Closed trades",   "closed"),
-                       ("Open trades",     "open"),
-                       ("Win rate %",      "win_rate"),
-                       ("Total PnL (USDT)","pnl"),
-                       ("Fees paid",       "fees"),
-                       ("Slippage",        "slip")):
-        p_val = summaries.get("PAPER",  {}).get(key)
+    for label, key in (
+        ("Closed trades", "closed"),
+        ("Open trades", "open"),
+        ("Win rate %", "win_rate"),
+        ("Total PnL (USDT)", "pnl"),
+        ("Fees paid", "fees"),
+        ("Slippage", "slip"),
+    ):
+        p_val = summaries.get("PAPER", {}).get(key)
         s_val = summaries.get("SHADOW", {}).get(key)
         p_s = f"{'-':>14}" if p_val is None else f"{p_val:>14.2f}"
         s_s = f"{'-':>14}" if s_val is None else f"{s_val:>14.2f}"
-        if p_val is not None and s_val is not None and key in (
-                "pnl", "win_rate", "fees", "slip"):
+        if p_val is not None and s_val is not None and key in ("pnl", "win_rate", "fees", "slip"):
             d = s_val - p_val
             d_s = f"{d:>+12.2f}"
         else:
@@ -757,10 +831,10 @@ def shadow_compare(
         s_pnl = summaries["SHADOW"]["pnl"]
         if abs(p_pnl) > 1e-9:
             rel = (s_pnl - p_pnl) / abs(p_pnl) * 100
-            verdict = ("WITHIN ±15%" if abs(rel) <= 15
-                       else "OUTSIDE ±15% — investigate")
-            _console.print(f"\nShadow vs Paper PnL deviation: "
-                           f"{rel:+.1f}%  →  [bold]{verdict}[/bold]")
+            verdict = "WITHIN ±15%" if abs(rel) <= 15 else "OUTSIDE ±15% — investigate"
+            _console.print(
+                f"\nShadow vs Paper PnL deviation: " f"{rel:+.1f}%  →  [bold]{verdict}[/bold]"
+            )
 
     for name, trades in recent.items():
         if not trades:
@@ -772,9 +846,11 @@ def shadow_compare(
             entry = t.get("entry_price") or 0.0
             ex = t.get("exit_price") or 0.0
             pnl = t.get("pnl") or 0.0
-            _console.print(f"  {ts}  {sym:<10}  "
-                            f"entry {entry:>10.4f}  exit {ex:>10.4f}  "
-                            f"PnL {pnl:>+8.2f}")
+            _console.print(
+                f"  {ts}  {sym:<10}  "
+                f"entry {entry:>10.4f}  exit {ex:>10.4f}  "
+                f"PnL {pnl:>+8.2f}"
+            )
 
 
 @app.command()
@@ -782,8 +858,10 @@ def observe(
     profile: Optional[str] = typer.Option(None, help="Config profile."),
     interval: int = typer.Option(300, help="Seconds between observation cycles."),
     real_data: bool = typer.Option(
-        True, "--real-data/--mock-data",
-        help="Use live Binance public market data (read-only) vs the simulator."),
+        True,
+        "--real-data/--mock-data",
+        help="Use live Binance public market data (read-only) vs the simulator.",
+    ),
 ) -> None:
     """Run the 24/7 Market Safety Observer (Ctrl+C to stop).
 
@@ -796,14 +874,17 @@ def observe(
     cfg = _setup(profile)
     _console.rule("[bold]daytrade — Market Safety Observer")
     from daytrade.ops import SingleInstanceLock, SingleInstanceLockError
+
     _observe_lock = SingleInstanceLock("observe")
     try:
         _observe_lock.acquire()
     except SingleInstanceLockError as exc:
         _console.print(f"[red]Refusing to start:[/red] {exc}")
         raise typer.Exit(code=2)
-    _console.print("Paper / simulation only. No real orders, wallets, or "
-                    "money movement. Press Ctrl+C to stop.\n")
+    _console.print(
+        "Paper / simulation only. No real orders, wallets, or "
+        "money movement. Press Ctrl+C to stop.\n"
+    )
 
     model = None
     model_path = _MODELS / "model.pkl"
@@ -814,10 +895,13 @@ def observe(
         except Exception as exc:  # noqa: BLE001
             _console.print(f"[yellow]ML model not loaded:[/yellow] {exc}")
 
-    observer = Observer(cfg, load_watchlist_config(),
-                        db=ObservatoryDB(), feed=build_feed(cfg), model=model)
-    _console.print(f"Observing {len(observer.watchlist_config.symbols)} symbols "
-                    f"every {interval}s. Database: {DEFAULT_DB_PATH}")
+    observer = Observer(
+        cfg, load_watchlist_config(), db=ObservatoryDB(), feed=build_feed(cfg), model=model
+    )
+    _console.print(
+        f"Observing {len(observer.watchlist_config.symbols)} symbols "
+        f"every {interval}s. Database: {DEFAULT_DB_PATH}"
+    )
     try:
         observer.run_forever(interval)
     finally:
@@ -832,20 +916,20 @@ def dashboard(
 ) -> None:
     """Launch the visual Market Safety dashboard (FastAPI + web UI)."""
     import uvicorn
+
     _console.rule("[bold]daytrade — Market Safety Dashboard")
     from daytrade.ops import SingleInstanceLock, SingleInstanceLockError
+
     _dash_lock = SingleInstanceLock("dashboard")
     try:
         _dash_lock.acquire()
     except SingleInstanceLockError as exc:
         _console.print(f"[red]Refusing to start:[/red] {exc}")
         raise typer.Exit(code=2)
-    _console.print(f"Dashboard: [bold]http://{host}:{port}[/bold]  "
-                    f"(reads {DEFAULT_DB_PATH})")
+    _console.print(f"Dashboard: [bold]http://{host}:{port}[/bold]  " f"(reads {DEFAULT_DB_PATH})")
     _console.print("Read-only observatory view. Ctrl+C to stop.\n")
     try:
-        uvicorn.run("daytrade.dashboard.app:app", host=host, port=port,
-                    log_level="warning")
+        uvicorn.run("daytrade.dashboard.app:app", host=host, port=port, log_level="warning")
     finally:
         _dash_lock.release()
 
@@ -876,23 +960,26 @@ def status() -> None:
     table.add_column("k", style="bold")
     table.add_column("v")
     if run:
-        from datetime import datetime, timezone
         live = run["status"] == "running"
-        table.add_row("Bot", ("RUNNING" if live else run["status"].upper())
-                      + f" (run #{run['id']}, {run['cycles']} cycles)")
+        table.add_row(
+            "Bot",
+            ("RUNNING" if live else run["status"].upper())
+            + f" (run #{run['id']}, {run['cycles']} cycles)",
+        )
         table.add_row("Last heartbeat", str(run.get("last_heartbeat_ts")))
     else:
         table.add_row("Bot", "never started — run 'trading-bot observe'")
     if safety:
         table.add_row("Market safety score", f"{safety['score']}/100")
-        table.add_row("Status / condition",
-                      f"{safety['status']} / {safety['condition']}")
+        table.add_row("Status / condition", f"{safety['status']} / {safety['condition']}")
     table.add_row("Snapshots stored", str(db.count("market_snapshots")))
     table.add_row("Predictions stored", str(db.count("predictions")))
     table.add_row("Predictions evaluated", str(memory.total))
-    table.add_row("Prediction accuracy",
-                  f"{memory.overall_accuracy * 100:.0f}% "
-                  f"({'reliable' if memory.is_reliable else 'UNRELIABLE'})")
+    table.add_row(
+        "Prediction accuracy",
+        f"{memory.overall_accuracy * 100:.0f}% "
+        f"({'reliable' if memory.is_reliable else 'UNRELIABLE'})",
+    )
     table.add_row("Paper trades closed", str(db.count("paper_trades")))
     _console.print(table)
     db.close()
@@ -904,6 +991,7 @@ def watchlist_check(
 ) -> None:
     """Screen the configs/watchlist.yaml symbols for liquidity / quality."""
     from datetime import datetime, timezone
+
     cfg = _setup(profile)
     _console.rule("[bold]daytrade — watchlist check")
     wl = load_watchlist_config()
@@ -912,8 +1000,7 @@ def watchlist_check(
     screener = WatchlistScreener(wl)
 
     table = Table(title="Watchlist screening", header_style="bold")
-    for col in ("Symbol", "Status", "Price", "24h volume", "Spread",
-                "Book notional"):
+    for col in ("Symbol", "Status", "Price", "24h volume", "Spread", "Book notional"):
         table.add_column(col)
     approved = 0
     for symbol in wl.symbols:
@@ -924,9 +1011,14 @@ def watchlist_check(
         approved += int(r.approved)
         style = "green" if r.approved else "red"
         m = r.metrics
-        table.add_row(symbol, f"[{style}]{r.status}[/{style}]",
-                      f"{m.price:,.4f}", f"${m.volume_24h_usd:,.0f}",
-                      f"{m.spread_bps:.1f} bps", f"${m.book_notional_usd:,.0f}")
+        table.add_row(
+            symbol,
+            f"[{style}]{r.status}[/{style}]",
+            f"{m.price:,.4f}",
+            f"${m.volume_24h_usd:,.0f}",
+            f"{m.spread_bps:.1f} bps",
+            f"${m.book_notional_usd:,.0f}",
+        )
         if not r.approved:
             _console.print(f"[red]{symbol}:[/red] " + "; ".join(r.rejections))
     _console.print(table)
@@ -937,9 +1029,9 @@ def watchlist_check(
 def research(
     symbol: str = typer.Option("BTCUSDT", help="Symbol to research."),
     symbols: Optional[str] = typer.Option(
-        None, help="Comma-separated symbols (overrides --symbol)."),
-    interval: str = typer.Option(
-        "1h", help=f"Candle interval: {', '.join(sorted(INTERVAL_MS))}."),
+        None, help="Comma-separated symbols (overrides --symbol)."
+    ),
+    interval: str = typer.Option("1h", help=f"Candle interval: {', '.join(sorted(INTERVAL_MS))}."),
     days: int = typer.Option(365, help="Days of real history to evaluate."),
     profile: Optional[str] = typer.Option(None, help="Config profile."),
 ) -> None:
@@ -952,12 +1044,12 @@ def research(
     os.environ["DAYTRADE_ALLOW_NETWORK"] = "true"
     cfg = _setup(profile)
     _console.rule("[bold]daytrade — historical research lab")
-    syms = ([s.strip() for s in symbols.split(",") if s.strip()]
-            if symbols else [symbol])
+    syms = [s.strip() for s in symbols.split(",") if s.strip()] if symbols else [symbol]
     _console.print(
         f"Evaluating {len(syms)} symbol(s) over {days}d of real {interval} "
         "Binance history. First run downloads + caches; later runs are "
-        "instant. Backtests are NOT reality.\n")
+        "instant. Backtests are NOT reality.\n"
+    )
     results = run_research(syms, interval=interval, days=days, config=cfg)
     render_research(results, _console)
 

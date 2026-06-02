@@ -22,7 +22,7 @@ import numpy as np
 from ..config.schema import AppConfig
 from ..exchanges.mock import build_orderbook
 from ..ml.model import PredictiveModel
-from ..models import Action, BacktestMetrics, OHLCV, Side
+from ..models import OHLCV, Action, BacktestMetrics, Side
 from ..paper.broker import PaperBroker, TradeRecord
 from ..pipeline import AnalysisPipeline
 from ..risk.engine import RiskEngine
@@ -54,7 +54,7 @@ class BacktestResult:
     # reason category -> count, for skipped (non-executed) entry opportunities
     skipped_reasons: Dict[str, int] = field(default_factory=dict)
     # closed round-trip trades, for best/worst-decision reporting
-    trades: List["TradeRecord"] = field(default_factory=list)
+    trades: List[TradeRecord] = field(default_factory=list)
 
 
 def _max_drawdown(equity: List[float]) -> float:
@@ -96,12 +96,9 @@ class Backtester:
         """Run the backtest and return metrics + the equity curve."""
         warmup = self.config.backtest.warmup_bars
         if len(candles) <= warmup + 10:
-            raise ValueError(
-                f"need > {warmup + 10} candles for a backtest, got {len(candles)}"
-            )
+            raise ValueError(f"need > {warmup + 10} candles for a backtest, got {len(candles)}")
 
-        broker = PaperBroker(self.config.paper.starting_cash,
-                             self.config.paper.base_currency)
+        broker = PaperBroker(self.config.paper.starting_cash, self.config.paper.base_currency)
         risk = RiskEngine(self.config.risk, self.config.paper.starting_cash)
         symbol = candles[-1].symbol
 
@@ -120,7 +117,7 @@ class Backtester:
 
         for i in range(warmup, len(candles)):
             bar = candles[i]
-            history = candles[max(0, i + 1 - self.HISTORY_WINDOW): i + 1]
+            history = candles[max(0, i + 1 - self.HISTORY_WINDOW) : i + 1]
             mark = {symbol: bar.close}
             risk.observe_equity(bar.timestamp, broker.equity(mark))
 
@@ -128,23 +125,25 @@ class Backtester:
             if open_trade is not None:
                 bars_in_position += 1
                 exit_price = self._exit_price(bar, open_trade)
-                if exit_price is None and max_hold > 0 and \
-                        i - open_trade.bar_opened >= max_hold:
+                if exit_price is None and max_hold > 0 and i - open_trade.bar_opened >= max_hold:
                     # Triple-barrier vertical: time-stop a stalled position.
                     exit_price = bar.close
                 if exit_price is not None:
                     liq = self._liquidity(bar.close)
                     broker.submit_market_order(
-                        order_id=f"exit-{i}", symbol=symbol, side=Side.SELL,
-                        quantity=open_trade.quantity, reference_price=exit_price,
-                        available_liquidity=liq, risk_config=self.config.risk,
+                        order_id=f"exit-{i}",
+                        symbol=symbol,
+                        side=Side.SELL,
+                        quantity=open_trade.quantity,
+                        reference_price=exit_price,
+                        available_liquidity=liq,
+                        risk_config=self.config.risk,
                         timestamp=bar.timestamp,
                     )
                     # Feed the closed-trade result to the risk engine so a
                     # loss arms the post-loss cooldown.
                     if broker.closed_trades:
-                        risk.register_trade_close(
-                            broker.closed_trades[-1].pnl, i)
+                        risk.register_trade_close(broker.closed_trades[-1].pnl, i)
                     open_trade = None
 
             # --- look for a new entry only when flat ---
@@ -156,7 +155,8 @@ class Backtester:
 
                 open_count = 1 if broker.has_position(symbol) else 0
                 permission = risk.evaluate_entry(
-                    broker.equity(mark), open_positions=open_count, bar_index=i)
+                    broker.equity(mark), open_positions=open_count, bar_index=i
+                )
 
                 if decision.action is not Action.BUY:
                     # Categorize why analysis did not produce a BUY.
@@ -171,21 +171,26 @@ class Backtester:
                 elif not (decision.entry and decision.stop and decision.target):
                     _skip("missing price levels")
                 else:
-                    sizing = risk.size(broker.equity(mark), decision.entry,
-                                       decision.stop)
+                    sizing = risk.size(broker.equity(mark), decision.entry, decision.stop)
                     if not sizing.is_tradeable:
                         _skip("position size too small")
                     else:
                         liq = self._liquidity(bar.close)
                         fill = broker.submit_market_order(
-                            order_id=f"entry-{i}", symbol=symbol, side=Side.BUY,
-                            quantity=sizing.quantity, reference_price=decision.entry,
-                            available_liquidity=liq, risk_config=self.config.risk,
+                            order_id=f"entry-{i}",
+                            symbol=symbol,
+                            side=Side.BUY,
+                            quantity=sizing.quantity,
+                            reference_price=decision.entry,
+                            available_liquidity=liq,
+                            risk_config=self.config.risk,
                             timestamp=bar.timestamp,
                         )
                         open_trade = _OpenTrade(
-                            entry_price=fill.price, stop=decision.stop,
-                            target=decision.target, quantity=fill.quantity,
+                            entry_price=fill.price,
+                            stop=decision.stop,
+                            target=decision.target,
+                            quantity=fill.quantity,
                             bar_opened=i,
                         )
 
@@ -195,19 +200,26 @@ class Backtester:
         last = candles[-1]
         if open_trade is not None:
             broker.submit_market_order(
-                order_id="exit-final", symbol=symbol, side=Side.SELL,
-                quantity=open_trade.quantity, reference_price=last.close,
+                order_id="exit-final",
+                symbol=symbol,
+                side=Side.SELL,
+                quantity=open_trade.quantity,
+                reference_price=last.close,
                 available_liquidity=self._liquidity(last.close),
-                risk_config=self.config.risk, timestamp=last.timestamp,
+                risk_config=self.config.risk,
+                timestamp=last.timestamp,
             )
             equity_curve[-1] = broker.equity({symbol: last.close})
 
-        metrics = self._metrics(symbol, candles, warmup, broker, equity_curve,
-                                bars_in_position)
-        return BacktestResult(metrics=metrics, equity_curve=equity_curve,
-                              decisions=n_decisions, holds=n_holds,
-                              skipped_reasons=skipped,
-                              trades=broker.closed_trades)
+        metrics = self._metrics(symbol, candles, warmup, broker, equity_curve, bars_in_position)
+        return BacktestResult(
+            metrics=metrics,
+            equity_curve=equity_curve,
+            decisions=n_decisions,
+            holds=n_holds,
+            skipped_reasons=skipped,
+            trades=broker.closed_trades,
+        )
 
     # -- internals -----------------------------------------------------------
 
@@ -238,12 +250,25 @@ class Backtester:
         """
         target_notional = self.config.microstructure.thin_liquidity_notional * 10.0
         base_qty = max(1.0, target_notional / (price * 6.0))
-        return build_orderbook(symbol, price, exchange="backtest", depth=20,
-                               spread_bps=4.0, base_quantity=base_qty, jitter=0.0)
+        return build_orderbook(
+            symbol,
+            price,
+            exchange="backtest",
+            depth=20,
+            spread_bps=4.0,
+            base_quantity=base_qty,
+            jitter=0.0,
+        )
 
-    def _metrics(self, symbol: str, candles: List[OHLCV], warmup: int,
-                 broker: PaperBroker, equity_curve: List[float],
-                 bars_in_position: int) -> BacktestMetrics:
+    def _metrics(
+        self,
+        symbol: str,
+        candles: List[OHLCV],
+        warmup: int,
+        broker: PaperBroker,
+        equity_curve: List[float],
+        bars_in_position: int,
+    ) -> BacktestMetrics:
         trades = broker.closed_trades
         wins = [t for t in trades if t.is_win]
         losses = [t for t in trades if not t.is_win]
@@ -255,8 +280,9 @@ class Backtester:
         total_bars = len(candles) - warmup
 
         sharpe = _sharpe_like(equity_curve)
-        warnings: List[str] = ["Backtests are NOT reality — metrics are an "
-                               "optimistic upper bound."]
+        warnings: List[str] = [
+            "Backtests are NOT reality — metrics are an " "optimistic upper bound."
+        ]
         if sharpe > self.config.backtest.sharpe_warn_threshold:
             warnings.append(
                 f"Sharpe-like ratio {sharpe:.2f} exceeds "

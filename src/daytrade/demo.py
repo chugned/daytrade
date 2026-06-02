@@ -15,8 +15,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import List
 
-from .models import OHLCV, OrderBookSnapshot
 from .exchanges.mock import build_orderbook
+from .models import OHLCV, OrderBookSnapshot
 
 # The canonical scenario constants from PLAN.md.
 DEMO_SYMBOL = "BTCUSDT"
@@ -38,9 +38,9 @@ def _build_closes() -> List[float]:
       * bounce   — a small recovery off the low
     """
     returns: List[float] = []
-    returns += [0.00100] * 150          # calm uptrend
-    returns += [-0.00160] * 24          # sharp pullback -> RSI oversold (~25)
-    returns += [0.00060] * 5            # small bounce off the low
+    returns += [0.00100] * 150  # calm uptrend
+    returns += [-0.00160] * 24  # sharp pullback -> RSI oversold (~25)
+    returns += [0.00060] * 5  # small bounce off the low
 
     closes = [100.0]
     for r in returns:
@@ -63,15 +63,17 @@ def build_demo_candles() -> List[OHLCV]:
         open_ = prev_close
         hi = max(open_, close) * (1.0 + _WICK)
         lo = min(open_, close) * (1.0 - _WICK)
-        candles.append(OHLCV(
-            symbol=DEMO_SYMBOL,
-            timestamp=start_time + _BAR * i,
-            open=round(open_, 2),
-            high=round(hi, 2),
-            low=round(lo, 2),
-            close=round(close, 2),
-            volume=1000.0,
-        ))
+        candles.append(
+            OHLCV(
+                symbol=DEMO_SYMBOL,
+                timestamp=start_time + _BAR * i,
+                open=round(open_, 2),
+                high=round(hi, 2),
+                low=round(lo, 2),
+                close=round(close, 2),
+                volume=1000.0,
+            )
+        )
         prev_close = close
     return candles
 

@@ -6,12 +6,13 @@ from daytrade.observatory.prediction_tracker import GroupAccuracy, PredictionMem
 from daytrade.observatory.regime_gate import evaluate_regime_gate
 
 
-def _memory(**conditions: "tuple[int, int]") -> PredictionMemory:
+def _memory(**conditions: tuple[int, int]) -> PredictionMemory:
     """Build a PredictionMemory with the given regime (samples, correct)."""
     mem = PredictionMemory()
     for label, (samples, correct) in conditions.items():
         mem.by_condition[label] = GroupAccuracy(
-            label=label, samples=samples, correct=correct, mean_confidence=0.6)
+            label=label, samples=samples, correct=correct, mean_confidence=0.6
+        )
     return mem
 
 

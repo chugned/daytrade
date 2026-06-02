@@ -20,13 +20,11 @@ if TYPE_CHECKING:  # avoid import cycles at runtime
     from ..backtest.engine import BacktestResult
     from ..pipeline import PipelineResult
 
-_ACTION_STYLE = {Action.BUY: "bold green", Action.SELL: "bold red",
-                 Action.HOLD: "bold yellow"}
+_ACTION_STYLE = {Action.BUY: "bold green", Action.SELL: "bold red", Action.HOLD: "bold yellow"}
 
 
-def _signal_table(result: "PipelineResult") -> Table:
-    table = Table(title="Analysis layers", title_style="bold cyan",
-                  header_style="bold")
+def _signal_table(result: PipelineResult) -> Table:
+    table = Table(title="Analysis layers", title_style="bold cyan", header_style="bold")
     table.add_column("Layer")
     table.add_column("Bias")
     table.add_column("Score", justify="right")
@@ -37,25 +35,30 @@ def _signal_table(result: "PipelineResult") -> Table:
         ("Macro", result.macro),
         ("ML", result.ml),
     ):
-        table.add_row(name, str(sig.bias.value), f"{sig.score:+.3f}",
-                      f"{sig.confidence:.2f}")
+        table.add_row(name, str(sig.bias.value), f"{sig.score:+.3f}", f"{sig.confidence:.2f}")
     return table
 
 
-def render_decision(result: "PipelineResult", console: Console | None = None) -> None:
+def render_decision(result: PipelineResult, console: Console | None = None) -> None:
     """Render a full decision report for one pipeline pass."""
     console = console or Console()
     d = result.decision
 
     # --- market state ---
-    console.print(Panel(
-        f"Symbol: [bold]{d.symbol}[/bold]    "
-        f"Reference price: [bold]{result.reference_price:,.2f}[/bold]    "
-        f"ATR: {result.atr:,.2f}" if result.atr else
-        f"Symbol: [bold]{d.symbol}[/bold]    "
-        f"Reference price: [bold]{result.reference_price:,.2f}[/bold]",
-        title="Market state", border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            (
+                f"Symbol: [bold]{d.symbol}[/bold]    "
+                f"Reference price: [bold]{result.reference_price:,.2f}[/bold]    "
+                f"ATR: {result.atr:,.2f}"
+                if result.atr
+                else f"Symbol: [bold]{d.symbol}[/bold]    "
+                f"Reference price: [bold]{result.reference_price:,.2f}[/bold]"
+            ),
+            title="Market state",
+            border_style="cyan",
+        )
+    )
 
     console.print(_signal_table(result))
 
@@ -73,33 +76,41 @@ def render_decision(result: "PipelineResult", console: Console | None = None) ->
 
     # --- kill switch / warnings ---
     if result.kill_switch.active:
-        console.print(Panel(
-            "\n".join(f"• {r}" for r in result.kill_switch.reasons),
-            title="⚠ KILL SWITCH ACTIVE", border_style="red",
-        ))
+        console.print(
+            Panel(
+                "\n".join(f"• {r}" for r in result.kill_switch.reasons),
+                title="⚠ KILL SWITCH ACTIVE",
+                border_style="red",
+            )
+        )
 
     # --- reasoning ---
-    console.print(Panel(
-        "\n".join(f"• {r}" for r in d.reasoning),
-        title="Reasoning", border_style="blue",
-    ))
+    console.print(
+        Panel(
+            "\n".join(f"• {r}" for r in d.reasoning),
+            title="Reasoning",
+            border_style="blue",
+        )
+    )
 
-    console.print(Panel(
-        "Execution assumptions: simulated fills only — adverse slippage, "
-        "fees on both sides, partial fills capped by liquidity, modeled "
-        "latency. This platform CANNOT place real trades.\n"
-        "Backtests are NOT reality.",
-        title="Assumptions & safety", border_style="magenta",
-    ))
+    console.print(
+        Panel(
+            "Execution assumptions: simulated fills only — adverse slippage, "
+            "fees on both sides, partial fills capped by liquidity, modeled "
+            "latency. This platform CANNOT place real trades.\n"
+            "Backtests are NOT reality.",
+            title="Assumptions & safety",
+            border_style="magenta",
+        )
+    )
 
 
-def render_backtest(result: "BacktestResult", console: Console | None = None) -> None:
+def render_backtest(result: BacktestResult, console: Console | None = None) -> None:
     """Render backtest metrics."""
     console = console or Console()
     m: BacktestMetrics = result.metrics
 
-    table = Table(title=f"Backtest — {m.symbol}", title_style="bold cyan",
-                  header_style="bold")
+    table = Table(title=f"Backtest — {m.symbol}", title_style="bold cyan", header_style="bold")
     table.add_column("Metric")
     table.add_column("Value", justify="right")
     rows = [
@@ -108,40 +119,46 @@ def render_backtest(result: "BacktestResult", console: Console | None = None) ->
         ("Trades", f"{m.total_trades} ({m.winning_trades}W / {m.losing_trades}L)"),
         ("Win rate", f"{m.win_rate:.1%}"),
         ("Total return", f"{m.total_return_pct:+.2f}%"),
-        ("Starting / ending equity",
-         f"{m.starting_equity:,.2f} -> {m.ending_equity:,.2f}"),
+        ("Starting / ending equity", f"{m.starting_equity:,.2f} -> {m.ending_equity:,.2f}"),
         ("Profit factor", f"{m.profit_factor:.2f}"),
         ("Max drawdown", f"{m.max_drawdown_pct:.2f}%"),
         ("Sharpe-like", f"{m.sharpe_like:.2f}"),
         ("Exposure", f"{m.exposure_pct:.1%}"),
-        ("Total fees / slippage",
-         f"{m.total_fees:,.2f} / {m.total_slippage:,.2f}"),
+        ("Total fees / slippage", f"{m.total_fees:,.2f} / {m.total_slippage:,.2f}"),
     ]
     for label, value in rows:
         table.add_row(label, value)
     console.print(table)
 
     if m.warnings:
-        console.print(Panel(
-            "\n".join(f"• {w}" for w in m.warnings),
-            title="⚠ Realism warnings", border_style="yellow",
-        ))
+        console.print(
+            Panel(
+                "\n".join(f"• {w}" for w in m.warnings),
+                title="⚠ Realism warnings",
+                border_style="yellow",
+            )
+        )
 
 
-def render_walkforward(report: WalkForwardReport,
-                       console: Console | None = None) -> None:
+def render_walkforward(report: WalkForwardReport, console: Console | None = None) -> None:
     """Render a walk-forward validation report."""
     console = console or Console()
-    table = Table(title=f"Walk-forward validation — {report.model_kind}",
-                  title_style="bold cyan", header_style="bold")
-    for col in ("Fold", "Train", "Test", "Train acc", "Test acc",
-                "Test AUC", "Overfit gap"):
+    table = Table(
+        title=f"Walk-forward validation — {report.model_kind}",
+        title_style="bold cyan",
+        header_style="bold",
+    )
+    for col in ("Fold", "Train", "Test", "Train acc", "Test acc", "Test AUC", "Overfit gap"):
         table.add_column(col, justify="right")
     for f in report.folds:
         table.add_row(
-            str(f.fold), str(f.train_samples), str(f.test_samples),
-            f"{f.train_accuracy:.3f}", f"{f.test_accuracy:.3f}",
-            f"{f.test_auc:.3f}", f"{f.overfit_gap:+.3f}",
+            str(f.fold),
+            str(f.train_samples),
+            str(f.test_samples),
+            f"{f.train_accuracy:.3f}",
+            f"{f.test_accuracy:.3f}",
+            f"{f.test_auc:.3f}",
+            f"{f.overfit_gap:+.3f}",
         )
     console.print(table)
     console.print(
@@ -150,7 +167,10 @@ def render_walkforward(report: WalkForwardReport,
         f"Leakage suspected: [bold]{report.leakage_suspected}[/bold]"
     )
     if report.warnings:
-        console.print(Panel(
-            "\n".join(f"• {w}" for w in report.warnings),
-            title="⚠ Validation warnings", border_style="yellow",
-        ))
+        console.print(
+            Panel(
+                "\n".join(f"• {w}" for w in report.warnings),
+                title="⚠ Validation warnings",
+                border_style="yellow",
+            )
+        )

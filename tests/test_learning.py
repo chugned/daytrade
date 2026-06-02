@@ -9,9 +9,9 @@ import pytest
 from daytrade.config import WatchlistConfig, load_config
 from daytrade.observatory import (
     LearningSession,
+    LiveMockFeed,
     ObservatoryDB,
     Observer,
-    LiveMockFeed,
     compute_readiness,
     confidence_calibration,
     phase_for,
@@ -24,11 +24,11 @@ _START = datetime(2026, 5, 1, tzinfo=timezone.utc)
 
 
 def _session(days=30, interval=300) -> LearningSession:
-    return LearningSession(start=_START, target_days=days,
-                           interval_seconds=interval)
+    return LearningSession(start=_START, target_days=days, interval_seconds=interval)
 
 
 # --- learning session ------------------------------------------------------
+
 
 def test_learning_session_day_number():
     s = _session()
@@ -84,6 +84,7 @@ def test_learning_state_file_written(tmp_path):
     s.cycles_completed = 100
     s.save_state(_START + timedelta(days=3), {"predictions_made": 50}, path=path)
     import json
+
     state = json.loads(path.read_text())
     assert state["current_day"] == 4
     assert state["predictions_made"] == 50
@@ -92,12 +93,20 @@ def test_learning_state_file_written(tmp_path):
 
 # --- readiness score -------------------------------------------------------
 
+
 def _readiness_inputs(day_number: int) -> ReadinessInputs:
     return ReadinessInputs(
-        day_number=day_number, target_days=30, predictions_evaluated=800,
-        uptime_pct=98, max_drawdown_pct=4, overall_accuracy=0.62,
-        false_confidence_count=0, regimes_observed=5,
-        regime_accuracy_spread=0.1, api_failures=0)
+        day_number=day_number,
+        target_days=30,
+        predictions_evaluated=800,
+        uptime_pct=98,
+        max_drawdown_pct=4,
+        overall_accuracy=0.62,
+        false_confidence_count=0,
+        regimes_observed=5,
+        regime_accuracy_spread=0.1,
+        api_failures=0,
+    )
 
 
 def test_readiness_capped_before_day_30():
@@ -129,15 +138,24 @@ def test_readiness_never_says_safe_to_invest():
 
 def test_readiness_weak_evidence_has_blockers():
     weak = ReadinessInputs(
-        day_number=3, target_days=30, predictions_evaluated=20, uptime_pct=70,
-        max_drawdown_pct=15, overall_accuracy=0.46, false_confidence_count=2,
-        regimes_observed=1, regime_accuracy_spread=0.4, api_failures=3)
+        day_number=3,
+        target_days=30,
+        predictions_evaluated=20,
+        uptime_pct=70,
+        max_drawdown_pct=15,
+        overall_accuracy=0.46,
+        false_confidence_count=2,
+        regimes_observed=1,
+        regime_accuracy_spread=0.4,
+        api_failures=3,
+    )
     result = compute_readiness(weak)
     assert result.level in ("NOT ENOUGH DATA", "UNRELIABLE")
     assert len(result.blockers) >= 3
 
 
 # --- metrics ---------------------------------------------------------------
+
 
 def test_confidence_calibration_buckets():
     outcomes = [
@@ -156,13 +174,12 @@ def test_confidence_calibration_buckets():
 
 def test_regime_metrics():
     outcomes = [
-        {"market_condition": "CALM", "directionally_correct": 1,
-         "realized_pnl": 5.0},
-        {"market_condition": "CHOPPY", "directionally_correct": 0,
-         "realized_pnl": -3.0},
+        {"market_condition": "CALM", "directionally_correct": 1, "realized_pnl": 5.0},
+        {"market_condition": "CHOPPY", "directionally_correct": 0, "realized_pnl": -3.0},
     ]
-    regimes = [{"ts": "2026-05-01T00:00:00", "condition": "CALM",
-                "regime": "calm", "safety_score": 70}]
+    regimes = [
+        {"ts": "2026-05-01T00:00:00", "condition": "CALM", "regime": "calm", "safety_score": 70}
+    ]
     m = regime_metrics(outcomes, regimes)
     assert "CALM" in m["by_regime"] and "CHOPPY" in m["by_regime"]
     assert m["by_regime"]["CALM"]["accuracy"] == 100.0
@@ -173,15 +190,15 @@ def test_learning_metrics_block(tmp_path):
     db = ObservatoryDB(tmp_path / "obs.db")
     m = learning_metrics(db)
     # The four metric blocks are always present, even on an empty database.
-    assert set(m) == {"prediction", "trading_simulation",
-                      "market_understanding", "reliability"}
+    assert set(m) == {"prediction", "trading_simulation", "market_understanding", "reliability"}
     db.close()
 
 
 def test_roll_up_day(tmp_path):
     db = ObservatoryDB(tmp_path / "obs.db")
-    db.insert_safety_score(ts="2026-05-01T10:00:00+00:00", score=55,
-                           status="WAIT", condition="CHOPPY")
+    db.insert_safety_score(
+        ts="2026-05-01T10:00:00+00:00", score=55, status="WAIT", condition="CHOPPY"
+    )
     metric = roll_up_day(db, "2026-05-01", day_number=1, expected_cycles=288)
     assert metric["day_number"] == 1
     assert metric["cycles"] == 1
@@ -191,18 +208,23 @@ def test_roll_up_day(tmp_path):
 
 # --- observer with a learning session --------------------------------------
 
+
 def test_observer_writes_learning_state(tmp_path, monkeypatch):
     from daytrade.observatory import learning as learning_mod
+
     state_path = tmp_path / "learning_state.json"
     monkeypatch.setattr(learning_mod, "LEARNING_STATE_PATH", state_path)
 
     db = ObservatoryDB(tmp_path / "obs.db")
-    session = LearningSession.resume_or_create(db, target_days=30,
-                                               interval_seconds=300)
+    session = LearningSession.resume_or_create(db, target_days=30, interval_seconds=300)
     session.start = _START
-    obs = Observer(load_config(load_dotenv_file=False),
-                   WatchlistConfig(symbols=["BTCUSDT", "ETHUSDT"]),
-                   db=db, feed=LiveMockFeed(), learning_session=session)
+    obs = Observer(
+        load_config(load_dotenv_file=False),
+        WatchlistConfig(symbols=["BTCUSDT", "ETHUSDT"]),
+        db=db,
+        feed=LiveMockFeed(),
+        learning_session=session,
+    )
     obs.start()
     obs.run_once(_START)
     obs.run_once(_START + timedelta(hours=6))
@@ -217,12 +239,15 @@ def test_observer_writes_learning_state(tmp_path, monkeypatch):
 
 def test_observer_day_rollover_creates_daily_metric(tmp_path):
     db = ObservatoryDB(tmp_path / "obs.db")
-    session = LearningSession.resume_or_create(db, target_days=30,
-                                               interval_seconds=300)
+    session = LearningSession.resume_or_create(db, target_days=30, interval_seconds=300)
     session.start = _START
-    obs = Observer(load_config(load_dotenv_file=False),
-                   WatchlistConfig(symbols=["BTCUSDT"]),
-                   db=db, feed=LiveMockFeed(), learning_session=session)
+    obs = Observer(
+        load_config(load_dotenv_file=False),
+        WatchlistConfig(symbols=["BTCUSDT"]),
+        db=db,
+        feed=LiveMockFeed(),
+        learning_session=session,
+    )
     obs.start()
     obs.run_once(_START)
     obs.run_once(_START + timedelta(days=1, hours=1))  # crosses a day boundary

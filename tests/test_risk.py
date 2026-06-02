@@ -35,16 +35,30 @@ def test_position_size_zero_when_entry_equals_stop(config):
 
 def test_slippage_worsens_buy_fill(config):
     """A BUY must fill at or ABOVE the reference price."""
-    fill = simulate_fill("o", "BTC", Side.BUY, 1.0, reference_price=100.0,
-                         available_liquidity=100.0, config=config.risk)
+    fill = simulate_fill(
+        "o",
+        "BTC",
+        Side.BUY,
+        1.0,
+        reference_price=100.0,
+        available_liquidity=100.0,
+        config=config.risk,
+    )
     assert fill.price > 100.0
     assert fill.slippage > 0
 
 
 def test_slippage_worsens_sell_fill(config):
     """A SELL must fill at or BELOW the reference price."""
-    fill = simulate_fill("o", "BTC", Side.SELL, 1.0, reference_price=100.0,
-                         available_liquidity=100.0, config=config.risk)
+    fill = simulate_fill(
+        "o",
+        "BTC",
+        Side.SELL,
+        1.0,
+        reference_price=100.0,
+        available_liquidity=100.0,
+        config=config.risk,
+    )
     assert fill.price < 100.0
     assert fill.slippage > 0
 
@@ -58,11 +72,17 @@ def test_larger_order_has_more_impact(config):
 
 def test_partial_fill_caps_at_liquidity(config):
     """An oversized order fills only the liquidity-capped fraction."""
-    fill = simulate_fill("o", "BTC", Side.BUY, 1_000.0, reference_price=100.0,
-                         available_liquidity=10.0, config=config.risk)
+    fill = simulate_fill(
+        "o",
+        "BTC",
+        Side.BUY,
+        1_000.0,
+        reference_price=100.0,
+        available_liquidity=10.0,
+        config=config.risk,
+    )
     assert fill.is_partial
-    assert fill.quantity == pytest.approx(
-        10.0 * config.risk.partial_fill_liquidity_frac)
+    assert fill.quantity == pytest.approx(10.0 * config.risk.partial_fill_liquidity_frac)
 
 
 def test_fee_charged_on_fill(config):
@@ -72,8 +92,7 @@ def test_fee_charged_on_fill(config):
 
 def test_fill_rejected_without_liquidity(config):
     with pytest.raises(ValueError):
-        simulate_fill("o", "BTC", Side.BUY, 1.0, 100.0,
-                      available_liquidity=0.0, config=config.risk)
+        simulate_fill("o", "BTC", Side.BUY, 1.0, 100.0, available_liquidity=0.0, config=config.risk)
 
 
 def test_daily_loss_limit_blocks_trading(config):

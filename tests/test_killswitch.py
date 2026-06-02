@@ -14,15 +14,29 @@ from daytrade.safety import evaluate_kill_switch
 
 
 def _macro(regime="neutral", risk=RiskLevel.MEDIUM):
-    return MacroSignal(symbol="BTC", timestamp=0, bias=Bias.NEUTRAL, score=0.0,
-                       confidence=0.5, risk_level=risk, regime_label=regime)
+    return MacroSignal(
+        symbol="BTC",
+        timestamp=0,
+        bias=Bias.NEUTRAL,
+        score=0.0,
+        confidence=0.5,
+        risk_level=risk,
+        regime_label=regime,
+    )
 
 
 def _micro(spread=4.0, chop=False, thin=False):
-    return MicrostructureSignal(symbol="BTC", timestamp=0, bias=Bias.NEUTRAL,
-                                score=0.0, confidence=0.5, spread_bps=spread,
-                                regime=MarketRegime.RANGE, chop_zone=chop,
-                                thin_liquidity=thin)
+    return MicrostructureSignal(
+        symbol="BTC",
+        timestamp=0,
+        bias=Bias.NEUTRAL,
+        score=0.0,
+        confidence=0.5,
+        spread_bps=spread,
+        regime=MarketRegime.RANGE,
+        chop_zone=chop,
+        thin_liquidity=thin,
+    )
 
 
 CFG = KillSwitchConfig()

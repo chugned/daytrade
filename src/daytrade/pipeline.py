@@ -24,11 +24,11 @@ from .macro import MacroEngine
 from .microstructure import MicrostructureEngine
 from .ml.model import PredictiveModel
 from .models import (
+    OHLCV,
     ConsensusPrice,
     MacroSignal,
     MicrostructureSignal,
     MLSignal,
-    OHLCV,
     OrderBookSnapshot,
     TechnicalSignal,
     TradingDecision,
@@ -86,11 +86,15 @@ class AnalysisPipeline:
         return MLSignal(
             symbol=candles[-1].symbol,
             timestamp=candles[-1].timestamp,
-            bias=Bias.NEUTRAL, score=0.0, confidence=0.0,
+            bias=Bias.NEUTRAL,
+            score=0.0,
+            confidence=0.0,
             reasoning=["No ML model loaded — neutral signal"],
-            prob_up=0.5, prob_down=0.5,
+            prob_up=0.5,
+            prob_down=0.5,
             model_kind=ModelKind(self.config.ml.model_kind).value,
-            model_version="none", feature_count=0,
+            model_version="none",
+            feature_count=0,
         )
 
     def analyze(
@@ -117,9 +121,7 @@ class AnalysisPipeline:
         macro = self.macro_engine.analyze(symbol, candles, macro_scenario)
         ml = self._ml_signal(candles)
 
-        kill_switch = evaluate_kill_switch(
-            macro, microstructure, self.config.killswitch
-        )
+        kill_switch = evaluate_kill_switch(macro, microstructure, self.config.killswitch)
         atr = self._atr(candles)
 
         decision = self.fusion_engine.decide(

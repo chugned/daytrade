@@ -26,14 +26,12 @@ from __future__ import annotations
 
 import logging
 import os
-import time
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from ..models import Fill, Position, Side
 from ..ops.api_keys import (
     KeyPermissions,
-    WithdrawalPermissionForbidden,
     assert_trade_only,
     inspect_key,
 )
@@ -106,12 +104,14 @@ class BinanceExchange:
                     "BinanceExchange requires the optional 'ccxt' package. "
                     "Install it: pip install ccxt"
                 ) from exc
-            client = ccxt.binance({
-                "apiKey": api_key,
-                "secret": api_secret,
-                "enableRateLimit": rate_limit,
-                "options": {"defaultType": "spot"},
-            })
+            client = ccxt.binance(
+                {
+                    "apiKey": api_key,
+                    "secret": api_secret,
+                    "enableRateLimit": rate_limit,
+                    "options": {"defaultType": "spot"},
+                }
+            )
         self._client = client
         self._writes_enabled = bool(writes_enabled)
 
@@ -123,8 +123,9 @@ class BinanceExchange:
         """Flip writes on after the caller has confirmed the SafetyConfig
         opt-in. Idempotent."""
         self._writes_enabled = True
-        _log.warning("BinanceExchange writes ENABLED — orders will hit the "
-                     "real exchange on next submit.")
+        _log.warning(
+            "BinanceExchange writes ENABLED — orders will hit the " "real exchange on next submit."
+        )
 
     # ----- read paths -----
 
@@ -176,21 +177,32 @@ class BinanceExchange:
                 "BinanceExchange is in shadow (read-only) mode. To enable "
                 "writes the caller must (1) confirm LiveConfig.dry_run=False, "
                 "(2) confirm the SafetyConfig opt-in fields, and (3) call "
-                "enable_writes() explicitly. No order placed.")
+                "enable_writes() explicitly. No order placed."
+            )
         ccxt_sym = self._to_ccxt_symbol(order.symbol)
         side_str = "buy" if order.side is Side.BUY else "sell"
         try:
             resp = self._client.create_order(
-                ccxt_sym, "market", side_str, order.quantity,
-                None, {"newClientOrderId": order.client_order_id},
+                ccxt_sym,
+                "market",
+                side_str,
+                order.quantity,
+                None,
+                {"newClientOrderId": order.client_order_id},
             )
         except Exception as exc:  # noqa: BLE001 — paranoid wrap
             # Distinguish reject vs unreachable so the broker can react.
             msg = str(exc)
-            if any(s in msg.lower() for s in (
-                "insufficient", "lot size", "min notional", "filter failure",
-                "duplicate clientorderid",
-            )):
+            if any(
+                s in msg.lower()
+                for s in (
+                    "insufficient",
+                    "lot size",
+                    "min notional",
+                    "filter failure",
+                    "duplicate clientorderid",
+                )
+            ):
                 raise OrderRejected(f"binance rejected: {msg}") from exc
             raise ExchangeUnreachable(f"create_order failed: {msg}") from exc
         return self._to_fill(order, resp)
@@ -200,8 +212,9 @@ class BinanceExchange:
             raise ShadowModeError("cancel_order requires writes_enabled=True")
         ccxt_sym = self._to_ccxt_symbol(symbol)
         try:
-            self._client.cancel_order(client_order_id, ccxt_sym,
-                                      {"origClientOrderId": client_order_id})
+            self._client.cancel_order(
+                client_order_id, ccxt_sym, {"origClientOrderId": client_order_id}
+            )
         except Exception as exc:  # noqa: BLE001
             raise ExchangeUnreachable(f"cancel_order failed: {exc}") from exc
 
@@ -226,18 +239,18 @@ class BinanceExchange:
             filled = float(resp.get("filled") or 0.0)
             avg = resp.get("average") or resp.get("price") or order.reference_price
             avg = float(avg or order.reference_price)
-            fee_info = (resp.get("fee") or {})
+            fee_info = resp.get("fee") or {}
             fee = float(fee_info.get("cost", 0.0) or 0.0)
         except (TypeError, ValueError) as exc:
-            raise ExchangeUnreachable(
-                f"unparseable order response: {resp!r} ({exc})"
-            ) from exc
+            raise ExchangeUnreachable(f"unparseable order response: {resp!r} ({exc})") from exc
         if filled <= 0:
             raise OrderRejected(f"zero-filled order response: {resp!r}")
         ts_ms = resp.get("timestamp")
-        ts = (datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
-              if isinstance(ts_ms, (int, float))
-              else datetime.now(timezone.utc))
+        ts = (
+            datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+            if isinstance(ts_ms, (int, float))
+            else datetime.now(timezone.utc)
+        )
         return Fill(
             order_id=order.client_order_id,
             symbol=order.symbol,
@@ -258,8 +271,11 @@ class BinanceExchange:
         status_raw = (o.get("status") or "open").lower()
         # ccxt statuses: open, closed, canceled, expired, rejected
         status = {
-            "open": "open", "closed": "filled", "canceled": "cancelled",
-            "expired": "cancelled", "rejected": "rejected",
+            "open": "open",
+            "closed": "filled",
+            "canceled": "cancelled",
+            "expired": "cancelled",
+            "rejected": "rejected",
         }.get(status_raw, status_raw)
         return OrderState(
             client_order_id=str(o.get("clientOrderId") or o.get("id") or ""),
@@ -273,10 +289,13 @@ class BinanceExchange:
         )
 
 
-def from_env(*, api_key_env: str, api_secret_env: str,
-             writes_enabled: bool = False,
-             permissions: Optional[KeyPermissions] = None
-             ) -> "BinanceExchange":
+def from_env(
+    *,
+    api_key_env: str,
+    api_secret_env: str,
+    writes_enabled: bool = False,
+    permissions: Optional[KeyPermissions] = None,
+) -> BinanceExchange:
     """Construct a BinanceExchange from environment variables. Never
     persists the secret; reads it once and hands it to ccxt."""
     key = os.environ.get(api_key_env, "").strip()
@@ -286,6 +305,6 @@ def from_env(*, api_key_env: str, api_secret_env: str,
             f"API credentials not found: env vars {api_key_env!r} "
             f"and {api_secret_env!r} must be set."
         )
-    return BinanceExchange(api_key=key, api_secret=sec,
-                           writes_enabled=writes_enabled,
-                           permissions=permissions)
+    return BinanceExchange(
+        api_key=key, api_secret=sec, writes_enabled=writes_enabled, permissions=permissions
+    )

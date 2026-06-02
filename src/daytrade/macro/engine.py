@@ -11,7 +11,7 @@ import os
 from typing import List, Optional
 
 from ..config.schema import AppConfig
-from ..models import MacroSignal, OHLCV
+from ..models import OHLCV, MacroSignal
 from ..runtime import get_logger
 from .gemini import GeminiMacroAnalyzer, MacroUnavailable
 from .mock import MockMacroAnalyzer

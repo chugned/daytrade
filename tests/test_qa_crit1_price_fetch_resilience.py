@@ -9,20 +9,24 @@ were silently un-managed (stop-losses skipped).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
 
-from daytrade.observatory.observer import Observer
 from daytrade.config.schema import AppConfig, WatchlistConfig
+from daytrade.observatory.observer import Observer
 
 
 class _FlakyFeed:
     """A feed whose price_at fails for a target symbol but works for others."""
 
-    def __init__(self, prices: dict, fail_symbol: str | None = None,
-                 exc=RuntimeError("simulated Binance 503")):
+    def __init__(
+        self,
+        prices: dict,
+        fail_symbol: str | None = None,
+        exc=RuntimeError("simulated Binance 503"),
+    ):
         self._prices = prices
         self._fail = fail_symbol
         self._exc = exc
@@ -39,6 +43,7 @@ def _obs(broker=None):
     cfg = AppConfig()
     # Patch ObservatoryDB so we don't write to disk
     from unittest.mock import patch
+
     with patch("daytrade.observatory.observer.ObservatoryDB"):
         return Observer(cfg, WatchlistConfig(), broker=broker)
 
@@ -48,10 +53,22 @@ def test_equity_handles_price_at_failure_for_one_position():
     return a valid number using the entry price as fallback."""
     obs = _obs()
     obs._open = {
-        "BTCUSDT": {"entry": 100_000.0, "qty": 0.001, "stop": 99_000.0,
-                    "target": 101_000.0, "opened_cycle": 1, "trade_id": 1},
-        "ETHUSDT": {"entry": 3500.0, "qty": 0.01, "stop": 3450.0,
-                    "target": 3550.0, "opened_cycle": 1, "trade_id": 2},
+        "BTCUSDT": {
+            "entry": 100_000.0,
+            "qty": 0.001,
+            "stop": 99_000.0,
+            "target": 101_000.0,
+            "opened_cycle": 1,
+            "trade_id": 1,
+        },
+        "ETHUSDT": {
+            "entry": 3500.0,
+            "qty": 0.01,
+            "stop": 3450.0,
+            "target": 3550.0,
+            "opened_cycle": 1,
+            "trade_id": 2,
+        },
     }
     obs.feed = _FlakyFeed(
         prices={"ETHUSDT": 3550.0},
@@ -72,17 +89,29 @@ def test_manage_positions_skips_failed_symbol_but_processes_others():
     """A failing price fetch on symbol A must not prevent symbol B
     from being managed (the silent-stop-loss bug)."""
     obs = _obs(broker=MagicMock())
-    obs._broker.close_long.return_value = MagicMock(pnl=10.0, fill_price=99_000.0,
-                                                     fees=0.5, slippage=0.1)
+    obs._broker.close_long.return_value = MagicMock(
+        pnl=10.0, fill_price=99_000.0, fees=0.5, slippage=0.1
+    )
     obs._open = {
-        "BTCUSDT": {"entry": 100_000.0, "qty": 0.001, "stop": 99_000.0,
-                    "target": 101_000.0, "opened_cycle": 1, "trade_id": 1},
-        "ETHUSDT": {"entry": 3500.0, "qty": 0.01, "stop": 3450.0,
-                    "target": 3550.0, "opened_cycle": 1, "trade_id": 2},
+        "BTCUSDT": {
+            "entry": 100_000.0,
+            "qty": 0.001,
+            "stop": 99_000.0,
+            "target": 101_000.0,
+            "opened_cycle": 1,
+            "trade_id": 1,
+        },
+        "ETHUSDT": {
+            "entry": 3500.0,
+            "qty": 0.01,
+            "stop": 3450.0,
+            "target": 3550.0,
+            "opened_cycle": 1,
+            "trade_id": 2,
+        },
     }
     # BTC's price_at fails; ETH's hits the target → should close ETH
-    obs.feed = _FlakyFeed(prices={"ETHUSDT": 3550.0},
-                          fail_symbol="BTCUSDT")
+    obs.feed = _FlakyFeed(prices={"ETHUSDT": 3550.0}, fail_symbol="BTCUSDT")
     obs.db = MagicMock()
     obs._risk = MagicMock()
     now = datetime(2026, 7, 1, tzinfo=timezone.utc)
@@ -103,8 +132,14 @@ def test_manage_positions_all_symbols_failing_returns_zero():
     return cleanly (zero closes) rather than propagating the exception."""
     obs = _obs(broker=MagicMock())
     obs._open = {
-        "BTCUSDT": {"entry": 100_000.0, "qty": 0.001, "stop": 99_000.0,
-                    "target": 101_000.0, "opened_cycle": 1, "trade_id": 1},
+        "BTCUSDT": {
+            "entry": 100_000.0,
+            "qty": 0.001,
+            "stop": 99_000.0,
+            "target": 101_000.0,
+            "opened_cycle": 1,
+            "trade_id": 1,
+        },
     }
     obs.feed = _FlakyFeed(prices={}, fail_symbol="BTCUSDT")
     obs.db = MagicMock()

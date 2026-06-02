@@ -27,7 +27,7 @@ def test_calibrator_corrects_systematic_overconfidence():
     samples = []
     for _ in range(500):
         stated = rng.uniform(0.40, 0.85)
-        true_p = stated - 0.15            # systematically overconfident
+        true_p = stated - 0.15  # systematically overconfident
         samples.append((stated, rng.random() < true_p))
 
     cal = ConfidenceCalibrator.fit(samples)
@@ -41,8 +41,7 @@ def test_calibrator_corrects_systematic_overconfidence():
 def test_calibrator_is_monotonic():
     """Higher stated confidence never calibrates to a lower probability."""
     rng = random.Random(7)
-    samples = [(s := rng.uniform(0.4, 0.9), rng.random() < s - 0.1)
-               for _ in range(400)]
+    samples = [(s := rng.uniform(0.4, 0.9), rng.random() < s - 0.1) for _ in range(400)]
     cal = ConfidenceCalibrator.fit(samples)
     assert cal.is_fitted
     assert cal.calibrate(0.50) <= cal.calibrate(0.70) <= cal.calibrate(0.85)

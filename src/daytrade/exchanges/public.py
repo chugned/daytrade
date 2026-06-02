@@ -27,17 +27,16 @@ class _HttpClient(MarketDataClient):
 
     base_url: str = ""
 
-    def __init__(self, timeout: float = 5.0, max_retries: int = 3,
-                 allow_network: bool = False) -> None:
+    def __init__(
+        self, timeout: float = 5.0, max_retries: int = 3, allow_network: bool = False
+    ) -> None:
         self._timeout = timeout
         self._max_retries = max(1, max_retries)
         self._allow_network = allow_network
 
     def _get(self, path: str, params: Dict[str, Any]) -> Any:
         if not self._allow_network:
-            raise ExchangeError(
-                f"{self.name}: network disabled (set runtime.allow_network=true)"
-            )
+            raise ExchangeError(f"{self.name}: network disabled (set runtime.allow_network=true)")
 
         @retry(
             retry=retry_if_exception_type((httpx.HTTPError,)),
@@ -67,7 +66,8 @@ class BinanceClient(_HttpClient):
     def get_ticker(self, symbol: str) -> PriceTick:
         data = self._get("/api/v3/ticker/24hr", {"symbol": symbol})
         return PriceTick(
-            symbol=symbol, exchange=self.name,
+            symbol=symbol,
+            exchange=self.name,
             price=float(data["lastPrice"]),
             timestamp=datetime.now(timezone.utc),
             volume_24h=float(data.get("quoteVolume", 0.0)),
@@ -75,12 +75,17 @@ class BinanceClient(_HttpClient):
         )
 
     def get_ohlcv(self, symbol: str, limit: int = 200) -> List[OHLCV]:
-        rows = self._get("/api/v3/klines",
-                         {"symbol": symbol, "interval": "1m", "limit": limit})
+        rows = self._get("/api/v3/klines", {"symbol": symbol, "interval": "1m", "limit": limit})
         return [
-            OHLCV(symbol=symbol, timestamp=int(r[0]), open=float(r[1]),
-                  high=float(r[2]), low=float(r[3]), close=float(r[4]),
-                  volume=float(r[5]))
+            OHLCV(
+                symbol=symbol,
+                timestamp=int(r[0]),
+                open=float(r[1]),
+                high=float(r[2]),
+                low=float(r[3]),
+                close=float(r[4]),
+                volume=float(r[5]),
+            )
             for r in rows
         ]
 
@@ -96,11 +101,11 @@ class BybitClient(_HttpClient):
     base_url = "https://api.bybit.com"
 
     def get_ticker(self, symbol: str) -> PriceTick:
-        data = self._get("/v5/market/tickers",
-                         {"category": "spot", "symbol": symbol})
+        data = self._get("/v5/market/tickers", {"category": "spot", "symbol": symbol})
         row = data["result"]["list"][0]
         return PriceTick(
-            symbol=symbol, exchange=self.name,
+            symbol=symbol,
+            exchange=self.name,
             price=float(row["lastPrice"]),
             timestamp=datetime.now(timezone.utc),
             volume_24h=float(row.get("turnover24h", 0.0)),
@@ -108,21 +113,29 @@ class BybitClient(_HttpClient):
         )
 
     def get_ohlcv(self, symbol: str, limit: int = 200) -> List[OHLCV]:
-        data = self._get("/v5/market/kline",
-                         {"category": "spot", "symbol": symbol,
-                          "interval": "1", "limit": limit})
+        data = self._get(
+            "/v5/market/kline",
+            {"category": "spot", "symbol": symbol, "interval": "1", "limit": limit},
+        )
         rows = data["result"]["list"]
         # Bybit returns newest-first; reverse to oldest-first.
         return [
-            OHLCV(symbol=symbol, timestamp=int(r[0]), open=float(r[1]),
-                  high=float(r[2]), low=float(r[3]), close=float(r[4]),
-                  volume=float(r[5]))
+            OHLCV(
+                symbol=symbol,
+                timestamp=int(r[0]),
+                open=float(r[1]),
+                high=float(r[2]),
+                low=float(r[3]),
+                close=float(r[4]),
+                volume=float(r[5]),
+            )
             for r in reversed(rows)
         ]
 
     def get_orderbook(self, symbol: str, depth: int = 20) -> OrderBookSnapshot:
-        data = self._get("/v5/market/orderbook",
-                         {"category": "spot", "symbol": symbol, "limit": depth})
+        data = self._get(
+            "/v5/market/orderbook", {"category": "spot", "symbol": symbol, "limit": depth}
+        )
         res = data["result"]
         return _book_from_pairs(symbol, self.name, res["b"], res["a"])
 
@@ -143,12 +156,13 @@ class CoinGeckoClient(_HttpClient):
 
     def get_ticker(self, symbol: str) -> PriceTick:
         cid = self._coin_id(symbol)
-        data = self._get("/api/v3/simple/price",
-                         {"ids": cid, "vs_currencies": "usd",
-                          "include_24hr_vol": "true"})
+        data = self._get(
+            "/api/v3/simple/price", {"ids": cid, "vs_currencies": "usd", "include_24hr_vol": "true"}
+        )
         node = data[cid]
         return PriceTick(
-            symbol=symbol, exchange=self.name,
+            symbol=symbol,
+            exchange=self.name,
             price=float(node["usd"]),
             timestamp=datetime.now(timezone.utc),
             volume_24h=float(node.get("usd_24h_vol", 0.0)),
@@ -183,30 +197,37 @@ class KrakenClient(_HttpClient):
     def get_ticker(self, symbol: str) -> PriceTick:
         data = self._get("/0/public/Ticker", {"pair": self._pair(symbol)})
         row = next(iter(self._result(data).values()))
-        price = float(row["c"][0])           # last trade price
+        price = float(row["c"][0])  # last trade price
         base_volume_24h = float(row["v"][1])  # 24h volume in base units
         return PriceTick(
-            symbol=symbol, exchange=self.name, price=price,
+            symbol=symbol,
+            exchange=self.name,
+            price=price,
             timestamp=datetime.now(timezone.utc),
-            volume_24h=base_volume_24h * price, status=ExchangeStatus.OK,
+            volume_24h=base_volume_24h * price,
+            status=ExchangeStatus.OK,
         )
 
     def get_ohlcv(self, symbol: str, limit: int = 200) -> List[OHLCV]:
-        data = self._get("/0/public/OHLC",
-                         {"pair": self._pair(symbol), "interval": 1})
+        data = self._get("/0/public/OHLC", {"pair": self._pair(symbol), "interval": 1})
         result = self._result(data)
         rows = next(v for k, v in result.items() if k != "last")
         # Each row: [time, open, high, low, close, vwap, volume, count]
         return [
-            OHLCV(symbol=symbol, timestamp=int(r[0]), open=float(r[1]),
-                  high=float(r[2]), low=float(r[3]), close=float(r[4]),
-                  volume=float(r[6]))
+            OHLCV(
+                symbol=symbol,
+                timestamp=int(r[0]),
+                open=float(r[1]),
+                high=float(r[2]),
+                low=float(r[3]),
+                close=float(r[4]),
+                volume=float(r[6]),
+            )
             for r in rows[-limit:]
         ]
 
     def get_orderbook(self, symbol: str, depth: int = 20) -> OrderBookSnapshot:
-        data = self._get("/0/public/Depth",
-                         {"pair": self._pair(symbol), "count": depth})
+        data = self._get("/0/public/Depth", {"pair": self._pair(symbol), "count": depth})
         book = next(iter(self._result(data).values()))
         # Kraken levels are [price, volume, timestamp] — keep price/volume.
         bids = [(lvl[0], lvl[1]) for lvl in book["bids"]]
@@ -214,16 +235,19 @@ class KrakenClient(_HttpClient):
         return _book_from_pairs(symbol, self.name, bids, asks)
 
 
-def _book_from_pairs(symbol: str, exchange: str,
-                     raw_bids: List[List[str]],
-                     raw_asks: List[List[str]]) -> OrderBookSnapshot:
+def _book_from_pairs(
+    symbol: str, exchange: str, raw_bids: List[List[str]], raw_asks: List[List[str]]
+) -> OrderBookSnapshot:
     bids = [OrderBookLevel(price=float(p), quantity=float(q)) for p, q in raw_bids]
     asks = [OrderBookLevel(price=float(p), quantity=float(q)) for p, q in raw_asks]
     bids.sort(key=lambda lvl: lvl.price, reverse=True)
     asks.sort(key=lambda lvl: lvl.price)
     return OrderBookSnapshot(
-        symbol=symbol, exchange=exchange,
-        timestamp=datetime.now(timezone.utc), bids=bids, asks=asks,
+        symbol=symbol,
+        exchange=exchange,
+        timestamp=datetime.now(timezone.utc),
+        bids=bids,
+        asks=asks,
     )
 
 
@@ -235,8 +259,9 @@ _REGISTRY = {
 }
 
 
-def build_public_client(name: str, timeout: float = 5.0, max_retries: int = 3,
-                        allow_network: bool = False) -> MarketDataClient:
+def build_public_client(
+    name: str, timeout: float = 5.0, max_retries: int = 3, allow_network: bool = False
+) -> MarketDataClient:
     """Factory: construct a public client by name."""
     cls = _REGISTRY.get(name.lower())
     if cls is None:

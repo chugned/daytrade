@@ -43,10 +43,10 @@ class CascadeState(str, Enum):
 @dataclass(frozen=True)
 class CascadeReading:
     state: CascadeState
-    body_atr_mult: float        # bar body magnitude in ATR units (signed)
-    volume_ratio: float          # bar volume / trailing mean volume
-    lower_wick_ratio: float      # lower wick / total bar range
-    reason: str                  # short human-readable explanation
+    body_atr_mult: float  # bar body magnitude in ATR units (signed)
+    volume_ratio: float  # bar volume / trailing mean volume
+    lower_wick_ratio: float  # lower wick / total bar range
+    reason: str  # short human-readable explanation
 
 
 def _atr(candles: List[OHLCV], period: int = 14) -> Optional[float]:
@@ -56,9 +56,7 @@ def _atr(candles: List[OHLCV], period: int = 14) -> Optional[float]:
     for i in range(len(candles) - period, len(candles)):
         prev_close = candles[i - 1].close
         c = candles[i]
-        tr = max(c.high - c.low,
-                 abs(c.high - prev_close),
-                 abs(c.low - prev_close))
+        tr = max(c.high - c.low, abs(c.high - prev_close), abs(c.low - prev_close))
         trs.append(tr)
     return sum(trs) / len(trs) if trs else None
 
@@ -67,7 +65,7 @@ def _trailing_volume_mean(candles: List[OHLCV], window: int) -> Optional[float]:
     # Exclude the current bar so the ratio is a true z-against-history.
     if len(candles) < window + 1:
         return None
-    tail = candles[-(window + 1):-1]
+    tail = candles[-(window + 1) : -1]
     if not tail:
         return None
     return sum(c.volume for c in tail) / len(tail)
@@ -94,8 +92,10 @@ def detect_cascade(
     """
     if len(candles) < max(atr_period + 1, volume_window + 1, 2):
         return CascadeReading(
-            state=CascadeState.QUIET, body_atr_mult=0.0,
-            volume_ratio=0.0, lower_wick_ratio=0.0,
+            state=CascadeState.QUIET,
+            body_atr_mult=0.0,
+            volume_ratio=0.0,
+            lower_wick_ratio=0.0,
             reason="insufficient history",
         )
 
@@ -103,8 +103,10 @@ def detect_cascade(
     vol_mean = _trailing_volume_mean(candles, window=volume_window)
     if atr is None or atr <= 0 or vol_mean is None or vol_mean <= 0:
         return CascadeReading(
-            state=CascadeState.QUIET, body_atr_mult=0.0,
-            volume_ratio=0.0, lower_wick_ratio=0.0,
+            state=CascadeState.QUIET,
+            body_atr_mult=0.0,
+            volume_ratio=0.0,
+            lower_wick_ratio=0.0,
             reason="atr or volume baseline unavailable",
         )
 
@@ -119,31 +121,32 @@ def detect_cascade(
     volume_ratio = last.volume / vol_mean
 
     # --- CASCADE_ACTIVE: heavy down body + volume spike ----------------
-    if (body_atr_mult <= -body_atr_threshold
-            and volume_ratio >= volume_spike_ratio):
+    if body_atr_mult <= -body_atr_threshold and volume_ratio >= volume_spike_ratio:
         return CascadeReading(
             state=CascadeState.CASCADE_ACTIVE,
             body_atr_mult=body_atr_mult,
             volume_ratio=volume_ratio,
             lower_wick_ratio=lower_wick_ratio,
-            reason=(f"down body {body_atr_mult:.2f} ATR with "
-                    f"{volume_ratio:.1f}x volume"),
+            reason=(f"down body {body_atr_mult:.2f} ATR with " f"{volume_ratio:.1f}x volume"),
         )
 
     # --- CASCADE_EXHAUSTION: long lower wick + volume spike immediately
     # after a cascade-active bar.
     prev_body = prev.close - prev.open
     prev_atr_mult = prev_body / atr  # uses the same atr baseline
-    if (prev_atr_mult <= -body_atr_threshold
-            and lower_wick_ratio >= exhaustion_wick_ratio
-            and volume_ratio >= max(1.0, volume_spike_ratio * 0.5)):
+    if (
+        prev_atr_mult <= -body_atr_threshold
+        and lower_wick_ratio >= exhaustion_wick_ratio
+        and volume_ratio >= max(1.0, volume_spike_ratio * 0.5)
+    ):
         return CascadeReading(
             state=CascadeState.CASCADE_EXHAUSTION,
             body_atr_mult=body_atr_mult,
             volume_ratio=volume_ratio,
             lower_wick_ratio=lower_wick_ratio,
-            reason=(f"lower wick {lower_wick_ratio:.0%} of range after "
-                    f"{prev_atr_mult:.2f}-ATR drop"),
+            reason=(
+                f"lower wick {lower_wick_ratio:.0%} of range after " f"{prev_atr_mult:.2f}-ATR drop"
+            ),
         )
 
     return CascadeReading(

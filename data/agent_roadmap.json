@@ -11,7 +11,7 @@
     {
       "id": "P1-2",
       "title": "make test on nighttrade",
-      "status": "in_progress",
+      "status": "complete",
       "severity": "HIGH"
     },
     {
@@ -29,37 +29,37 @@
     {
       "id": "P1-5",
       "title": "docs/adr/0001 \u2014 alert routing fix (both repos)",
-      "status": "in_progress",
+      "status": "complete",
       "severity": "HIGH"
     },
     {
       "id": "P1-6",
       "title": "docs/adr/0002 \u2014 bot_runs PID liveness + heartbeat self-heal",
-      "status": "queued",
+      "status": "complete",
       "severity": "HIGH"
     },
     {
       "id": "P1-7",
       "title": "docs/adr/0003 \u2014 recent_errors default-filter alert:* (public API change)",
-      "status": "queued",
+      "status": "complete",
       "severity": "HIGH"
     },
     {
       "id": "P1-8",
       "title": "docs/adr/0004 \u2014 db.prune_old + day-rollover hook",
-      "status": "queued",
+      "status": "complete",
       "severity": "MEDIUM"
     },
     {
       "id": "P1-9",
       "title": "docs/adr/0005 \u2014 nighttrade yfinance threads=8 cap",
-      "status": "queued",
+      "status": "complete",
       "severity": "HIGH"
     },
     {
       "id": "P2-1",
       "title": "ruff + black + mypy added to daytrade with conservative config",
-      "status": "queued",
+      "status": "in_progress",
       "severity": "MEDIUM"
     },
     {

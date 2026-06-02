@@ -53,7 +53,7 @@ class FundingSnapshot:
     """A point-in-time funding-rate reading."""
 
     symbol: str
-    rate: float           # current premium index, as a fraction (0.0001 = 0.01%)
+    rate: float  # current premium index, as a fraction (0.0001 = 0.01%)
     mark_price: float
     timestamp_ms: int
 
@@ -84,14 +84,12 @@ def fetch_current_funding_rate(
     if use_cache and perp in _CACHE:
         ts, rate = _CACHE[perp]
         if now - ts < _CACHE_TTL_SECONDS:
-            return FundingSnapshot(perp, rate, mark_price=0.0,
-                                   timestamp_ms=int(ts * 1000))
+            return FundingSnapshot(perp, rate, mark_price=0.0, timestamp_ms=int(ts * 1000))
 
     own = client is None
     client = client or httpx.Client(timeout=8.0)
     try:
-        resp = client.get(f"{base_url}{_PREMIUM_PATH}",
-                          params={"symbol": perp})
+        resp = client.get(f"{base_url}{_PREMIUM_PATH}", params={"symbol": perp})
         if resp.status_code != 200:
             return None
         data = resp.json()
@@ -108,8 +106,7 @@ def fetch_current_funding_rate(
     except (KeyError, TypeError, ValueError):
         return None
     _CACHE[perp] = (now, rate)
-    return FundingSnapshot(symbol=perp, rate=rate,
-                           mark_price=mark, timestamp_ms=ts_ms)
+    return FundingSnapshot(symbol=perp, rate=rate, mark_price=mark, timestamp_ms=ts_ms)
 
 
 def fetch_funding_history(
@@ -128,9 +125,10 @@ def fetch_funding_history(
     own = client is None
     client = client or httpx.Client(timeout=15.0)
     try:
-        resp = client.get(f"{base_url}{_HISTORY_PATH}",
-                          params={"symbol": perp,
-                                   "limit": max(1, min(1000, int(limit)))})
+        resp = client.get(
+            f"{base_url}{_HISTORY_PATH}",
+            params={"symbol": perp, "limit": max(1, min(1000, int(limit)))},
+        )
         if resp.status_code != 200:
             return []
         data = resp.json()
@@ -143,12 +141,14 @@ def fetch_funding_history(
     out: List[FundingSnapshot] = []
     for row in data:
         try:
-            out.append(FundingSnapshot(
-                symbol=perp,
-                rate=float(row["fundingRate"]),
-                mark_price=float(row.get("markPrice", 0.0) or 0.0),
-                timestamp_ms=int(row["fundingTime"]),
-            ))
+            out.append(
+                FundingSnapshot(
+                    symbol=perp,
+                    rate=float(row["fundingRate"]),
+                    mark_price=float(row.get("markPrice", 0.0) or 0.0),
+                    timestamp_ms=int(row["fundingTime"]),
+                )
+            )
         except (KeyError, TypeError, ValueError):
             continue
     return out
@@ -175,9 +175,11 @@ def extreme_funding_blocks_buy(
     (see ``scripts/sweep_funding_gate.py``).
     """
     if rate >= extreme_positive:
-        return True, (f"extreme positive funding {rate*100:.3f}% — "
-                      f"longs crowded, pullback risk")
+        return True, (
+            f"extreme positive funding {rate*100:.3f}% — " f"longs crowded, pullback risk"
+        )
     if rate <= extreme_negative:
-        return False, (f"extreme negative funding {rate*100:.3f}% — "
-                       "short squeeze setup, BUY allowed")
+        return False, (
+            f"extreme negative funding {rate*100:.3f}% — " "short squeeze setup, BUY allowed"
+        )
     return False, f"funding {rate*100:.3f}% within normal range"

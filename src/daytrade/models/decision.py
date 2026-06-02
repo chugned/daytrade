@@ -29,7 +29,8 @@ class TradingDecision(DaytradeModel):
     target: float | None = Field(default=None, gt=0)
 
     reference_price: float | None = Field(
-        default=None, gt=0,
+        default=None,
+        gt=0,
         description="Consensus/market price the decision was computed against.",
     )
 
@@ -38,7 +39,9 @@ class TradingDecision(DaytradeModel):
         description="Per-layer scores in [-1,1] (technical, microstructure, macro, ml).",
     )
     fused_score: float = Field(
-        default=0.0, ge=-1.0, le=1.0,
+        default=0.0,
+        ge=-1.0,
+        le=1.0,
         description="The blended score that drove the action.",
     )
 
@@ -52,7 +55,7 @@ class TradingDecision(DaytradeModel):
         return normalize_timestamp(v)
 
     @model_validator(mode="after")
-    def _check_levels(self) -> "TradingDecision":
+    def _check_levels(self) -> TradingDecision:
         if self.action is Action.HOLD:
             return self
         entry, stop, target = self.entry, self.stop, self.target
@@ -60,14 +63,10 @@ class TradingDecision(DaytradeModel):
             raise ValueError(f"{self.action} decision requires entry/stop/target")
         if self.action is Action.BUY:
             if not (stop < entry < target):
-                raise ValueError(
-                    f"BUY needs stop < entry < target, got {stop}/{entry}/{target}"
-                )
+                raise ValueError(f"BUY needs stop < entry < target, got {stop}/{entry}/{target}")
         else:  # SELL
             if not (target < entry < stop):
-                raise ValueError(
-                    f"SELL needs target < entry < stop, got {target}/{entry}/{stop}"
-                )
+                raise ValueError(f"SELL needs target < entry < stop, got {target}/{entry}/{stop}")
         return self
 
     @property

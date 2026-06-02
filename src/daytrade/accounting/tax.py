@@ -15,8 +15,15 @@ from typing import List
 from ..paper.broker import TradeRecord
 
 _CSV_COLUMNS = [
-    "symbol", "quantity", "opened_at", "closed_at",
-    "cost_basis", "proceeds", "fees", "gain_loss", "holding_seconds",
+    "symbol",
+    "quantity",
+    "opened_at",
+    "closed_at",
+    "cost_basis",
+    "proceeds",
+    "fees",
+    "gain_loss",
+    "holding_seconds",
 ]
 
 _DISCLAIMER = (

@@ -34,6 +34,5 @@ def assert_paper_only() -> None:
     """
     if REAL_TRADING_ENABLED:  # pragma: no cover - cannot happen in a clean tree
         raise RuntimeError(
-            "REAL_TRADING_ENABLED is True — refusing to run. " +
-            _REAL_TRADING_DISABLED_MESSAGE
+            "REAL_TRADING_ENABLED is True — refusing to run. " + _REAL_TRADING_DISABLED_MESSAGE
         )

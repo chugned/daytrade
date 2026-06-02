@@ -24,26 +24,31 @@ def _clear_cache():
 def _payload(value: float, classification: str = "Greed") -> Dict[str, Any]:
     return {
         "name": "Fear and Greed Index",
-        "data": [{
-            "value": str(value),
-            "value_classification": classification,
-            "timestamp": "1700000000",
-            "time_until_update": "12345",
-        }],
+        "data": [
+            {
+                "value": str(value),
+                "value_classification": classification,
+                "timestamp": "1700000000",
+                "time_until_update": "12345",
+            }
+        ],
         "metadata": {"error": None},
     }
 
 
 def _patch_fetch(monkeypatch, payload: Optional[Dict[str, Any]]):
     """Replace the raw fetch with a stub returning ``payload`` (or None)."""
+
     def _stub(_timeout):
         return payload
+
     monkeypatch.setattr(fg, "_fetch_raw", _stub)
 
 
 # ---------------------------------------------------------------------------
 # Parsing and validation
 # ---------------------------------------------------------------------------
+
 
 def test_parse_extracts_value_and_classification(monkeypatch):
     _patch_fetch(monkeypatch, _payload(72.5, "Greed"))
@@ -81,6 +86,7 @@ def test_network_failure_returns_none(monkeypatch):
 # ---------------------------------------------------------------------------
 # Cache behaviour
 # ---------------------------------------------------------------------------
+
 
 def test_cache_returns_same_object_within_ttl(monkeypatch):
     calls = {"n": 0}
@@ -128,16 +134,15 @@ def test_cache_survives_failed_refresh(monkeypatch):
 # Gate logic
 # ---------------------------------------------------------------------------
 
+
 def test_extreme_greed_blocks_buy_at_or_above_threshold():
-    r = fg.FearGreedReading(value=85.0, classification="Extreme Greed",
-                            fetched_at=0.0)
+    r = fg.FearGreedReading(value=85.0, classification="Extreme Greed", fetched_at=0.0)
     assert fg.extreme_greed_blocks_buy(r, threshold=80.0) is True
     assert fg.extreme_greed_blocks_buy(r, threshold=90.0) is False
 
 
 def test_extreme_fear_blocks_sell_at_or_below_threshold():
-    r = fg.FearGreedReading(value=15.0, classification="Extreme Fear",
-                            fetched_at=0.0)
+    r = fg.FearGreedReading(value=15.0, classification="Extreme Fear", fetched_at=0.0)
     assert fg.extreme_fear_blocks_sell(r, threshold=20.0) is True
     assert fg.extreme_fear_blocks_sell(r, threshold=10.0) is False
 
@@ -151,13 +156,17 @@ def test_gates_default_to_allow_when_reading_missing():
 # Regime labels
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("value,expected", [
-    (10.0, "EXTREME_FEAR"),
-    (25.0, "FEAR"),
-    (50.0, "NEUTRAL"),
-    (70.0, "GREED"),
-    (95.0, "EXTREME_GREED"),
-])
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (10.0, "EXTREME_FEAR"),
+        (25.0, "FEAR"),
+        (50.0, "NEUTRAL"),
+        (70.0, "GREED"),
+        (95.0, "EXTREME_GREED"),
+    ],
+)
 def test_regime_label_buckets(value, expected):
     r = fg.FearGreedReading(value=value, classification="x", fetched_at=0.0)
     assert fg.regime_label(r) == expected
@@ -170,6 +179,7 @@ def test_regime_label_unknown_when_missing():
 # ---------------------------------------------------------------------------
 # Config wiring
 # ---------------------------------------------------------------------------
+
 
 def test_gating_config_has_fear_greed_fields():
     from daytrade.config.schema import GatingConfig

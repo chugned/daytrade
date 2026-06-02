@@ -21,7 +21,7 @@ import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Protocol
+from typing import Protocol
 
 import httpx
 
@@ -37,8 +37,7 @@ class Level(str, Enum):
 class Notifier(Protocol):
     """The single notification interface used throughout the codebase."""
 
-    def notify(self, title: str, message: str,
-               level: Level = Level.INFO) -> None: ...
+    def notify(self, title: str, message: str, level: Level = Level.INFO) -> None: ...
 
 
 @dataclass
@@ -47,8 +46,7 @@ class LogNotifier:
 
     name: str = "log"
 
-    def notify(self, title: str, message: str,
-               level: Level = Level.INFO) -> None:
+    def notify(self, title: str, message: str, level: Level = Level.INFO) -> None:
         log_fn = {
             Level.INFO: _log.info,
             Level.WARN: _log.warning,
@@ -70,15 +68,16 @@ class TelegramNotifier:
     chat_id: str
     name: str = "telegram"
 
-    def notify(self, title: str, message: str,
-               level: Level = Level.INFO) -> None:
+    def notify(self, title: str, message: str, level: Level = Level.INFO) -> None:
         icon = {"info": "🟢", "warn": "🟡", "critical": "🔴"}[level.value]
         text = f"{icon} *{title}*\n{message}"
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
         try:
-            httpx.post(url, json={"chat_id": self.chat_id, "text": text,
-                                  "parse_mode": "Markdown"},
-                       timeout=5.0)
+            httpx.post(
+                url,
+                json={"chat_id": self.chat_id, "text": text, "parse_mode": "Markdown"},
+                timeout=5.0,
+            )
         except Exception as exc:  # noqa: BLE001 - notify must never crash callers
             _log.warning("telegram notify failed: %s", exc)
             LogNotifier().notify(title, message, level)
@@ -97,16 +96,13 @@ class NtfyNotifier:
     server: str = "https://ntfy.sh"
     name: str = "ntfy"
 
-    def notify(self, title: str, message: str,
-               level: Level = Level.INFO) -> None:
-        priority = {"info": "default", "warn": "high",
-                    "critical": "urgent"}[level.value]
+    def notify(self, title: str, message: str, level: Level = Level.INFO) -> None:
+        priority = {"info": "default", "warn": "high", "critical": "urgent"}[level.value]
         try:
             httpx.post(
                 f"{self.server.rstrip('/')}/{self.topic}",
                 data=message.encode("utf-8"),
-                headers={"Title": title, "Priority": priority,
-                         "Tags": level.value},
+                headers={"Title": title, "Priority": priority, "Tags": level.value},
                 timeout=5.0,
             )
         except Exception as exc:  # noqa: BLE001

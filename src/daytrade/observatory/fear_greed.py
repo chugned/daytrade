@@ -39,9 +39,9 @@ _DEFAULT_CACHE_TTL_S = 3600.0  # daily index — refresh hourly is generous
 class FearGreedReading:
     """A single Fear & Greed observation."""
 
-    value: float            # 0–100
-    classification: str     # e.g. "Extreme Fear", "Greed", ...
-    fetched_at: float       # unix epoch when this reading was retrieved
+    value: float  # 0–100
+    classification: str  # e.g. "Extreme Fear", "Greed", ...
+    fetched_at: float  # unix epoch when this reading was retrieved
 
 
 # Module-level cache. A single reading at a time is sufficient — the index
@@ -57,12 +57,10 @@ def _fetch_raw(timeout_s: float) -> Optional[dict]:
         )
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError,
-            OSError, ValueError) as exc:
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, ValueError) as exc:
         # Any network or parse failure is non-fatal: we run on the primary
         # signals and just don't apply the sentiment gate this cycle.
-        logger.info("fear_greed: fetch failed (%s); using last cache if any",
-                    exc)
+        logger.info("fear_greed: fetch failed (%s); using last cache if any", exc)
         return None
     return payload
 
@@ -83,7 +81,9 @@ def _parse(payload: dict, fetched_at: float) -> Optional[FearGreedReading]:
         logger.info("fear_greed: out-of-range value %r", value)
         return None
     return FearGreedReading(
-        value=value, classification=classification, fetched_at=fetched_at,
+        value=value,
+        classification=classification,
+        fetched_at=fetched_at,
     )
 
 

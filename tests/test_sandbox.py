@@ -20,16 +20,16 @@ from daytrade.exchanges.credentials import (
     load_sandbox_credentials,
 )
 from daytrade.exchanges.sandbox import (
+    _TESTNET_URLS,
     SandboxExchangeClient,
     SandboxSafetyError,
     _assert_testnet_url,
-    _TESTNET_URLS,
     build_sandbox_client,
 )
 from daytrade.paper import PaperBroker, SandboxBroker
 
-
 # --- credentials -----------------------------------------------------------
+
 
 def test_no_credentials_returns_none(monkeypatch):
     monkeypatch.delenv("BINANCE_TESTNET_API_KEY", raising=False)
@@ -39,6 +39,7 @@ def test_no_credentials_returns_none(monkeypatch):
 
 def test_partial_credentials_raise(monkeypatch):
     from daytrade.exchanges.credentials import MissingCredentialsError
+
     monkeypatch.setenv("BINANCE_TESTNET_API_KEY", "abc")
     monkeypatch.delenv("BINANCE_TESTNET_API_SECRET", raising=False)
     with pytest.raises(MissingCredentialsError):
@@ -78,6 +79,7 @@ def test_mainnet_key_rejected():
 
 # --- testnet URL guard -----------------------------------------------------
 
+
 def test_all_sandbox_urls_are_testnet():
     for url in _TESTNET_URLS.values():
         assert "testnet" in url
@@ -91,8 +93,7 @@ def test_mainnet_url_rejected():
 
 
 def test_sandbox_client_uses_testnet_base_url():
-    client = SandboxExchangeClient(
-        ApiCredentials("binance", "k", "s"), SandboxConfig())
+    client = SandboxExchangeClient(ApiCredentials("binance", "k", "s"), SandboxConfig())
     assert client.base_url == _TESTNET_URLS["binance"]
     assert "testnet" in client.base_url
 
@@ -100,13 +101,14 @@ def test_sandbox_client_uses_testnet_base_url():
 def test_place_order_requires_verified_trade_key():
     """An unverified client cannot place a testnet order."""
     from daytrade.models import Side
-    client = SandboxExchangeClient(
-        ApiCredentials("binance", "k", "s"), SandboxConfig())
+
+    client = SandboxExchangeClient(ApiCredentials("binance", "k", "s"), SandboxConfig())
     with pytest.raises(SandboxSafetyError):
         client.place_test_order("BTCUSDT", Side.BUY, 1.0)
 
 
 # --- build / broker --------------------------------------------------------
+
 
 def test_build_sandbox_client_none_when_disabled():
     cfg = load_config(load_dotenv_file=False)

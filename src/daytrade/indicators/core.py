@@ -64,11 +64,13 @@ def macd(
     macd_line = ema(close, fast) - ema(close, slow)
     signal_line = ema(macd_line, signal)
     histogram = macd_line - signal_line
-    return pd.DataFrame({
-        "macd": macd_line,
-        "signal": signal_line,
-        "histogram": histogram,
-    })
+    return pd.DataFrame(
+        {
+            "macd": macd_line,
+            "signal": signal_line,
+            "histogram": histogram,
+        }
+    )
 
 
 def returns(close: pd.Series, periods: int = 1) -> pd.Series:
@@ -111,7 +113,7 @@ def trend_slope(close: pd.Series, window: int = 20) -> pd.Series:
         raise ValueError("trend window must be >= 2")
     x = np.arange(window, dtype=float)
     x_dev = x - x.mean()
-    x_var = float((x_dev ** 2).sum())
+    x_var = float((x_dev**2).sum())
 
     y = close.to_numpy(dtype=float)
     out = np.full(y.shape[0], np.nan)
@@ -124,18 +126,21 @@ def trend_slope(close: pd.Series, window: int = 20) -> pd.Series:
         beta = numerator / (x_var + _EPS)
         # Match the denominator floor: window mean, floored in magnitude.
         denom = np.where(np.abs(y_mean) > _EPS, y_mean, _EPS)
-        out[window - 1:] = beta / denom
+        out[window - 1 :] = beta / denom
     return pd.Series(out, index=close.index)
 
 
 def true_range(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
     """True range — the building block of ATR."""
     prev_close = close.shift(1)
-    ranges = pd.concat([
-        high - low,
-        (high - prev_close).abs(),
-        (low - prev_close).abs(),
-    ], axis=1)
+    ranges = pd.concat(
+        [
+            high - low,
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    )
     return ranges.max(axis=1)
 
 

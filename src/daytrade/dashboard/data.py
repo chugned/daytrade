@@ -34,7 +34,7 @@ _LOG_FILE = _REPO_ROOT / "logs" / "daytrade.log"
 _DBWRITE_LOG = _REPO_ROOT / "logs" / "db-writes.log"
 
 # Price-chart ranges -> (Binance kline interval, number of candles).
-_CHART_RANGES: Dict[str, "tuple[str, int]"] = {
+_CHART_RANGES: Dict[str, tuple[str, int]] = {
     "1D": ("15m", 96),
     "5D": ("1h", 120),
     "1M": ("4h", 180),
@@ -42,7 +42,7 @@ _CHART_RANGES: Dict[str, "tuple[str, int]"] = {
     "1Y": ("1d", 365),
 }
 # Small in-process cache so toggling ranges does not hammer Binance.
-_CHART_CACHE: Dict[str, "tuple[float, Dict[str, Any]]"] = {}
+_CHART_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
 _CHART_TTL = 45.0
 
 # A heartbeat older than this means the observer is not considered "live".

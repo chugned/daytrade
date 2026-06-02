@@ -16,8 +16,8 @@ from .enums import (
     Side,
 )
 from .market import (
-    ConsensusPrice,
     OHLCV,
+    ConsensusPrice,
     OrderBookLevel,
     OrderBookSnapshot,
     PriceTick,

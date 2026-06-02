@@ -13,8 +13,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import subprocess
-import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -25,7 +24,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from . import activity as _activity
 from . import ram_history as _ram
 
-
 # ---- Bot registry --------------------------------------------------------
 
 
@@ -34,10 +32,10 @@ class Bot:
     """A bot the mission-control dashboard knows how to inspect."""
 
     name: str
-    project_root: Path                 # repo root for that bot
-    process_match: List[str]           # substrings; any match = "this is the bot"
-    log_path: Optional[Path] = None    # main log file, if any
-    db_path: Optional[Path] = None     # observatory DB, if any
+    project_root: Path  # repo root for that bot
+    process_match: List[str]  # substrings; any match = "this is the bot"
+    log_path: Optional[Path] = None  # main log file, if any
+    db_path: Optional[Path] = None  # observatory DB, if any
     dashboard_url: Optional[str] = None  # if the bot has its own dashboard
     notes: str = ""
 
@@ -55,7 +53,7 @@ def default_bots() -> List[Bot]:
     home = Path("/Users/nedimvejo")
     dt_root = home / "Desktop" / "coding" / "daytrade"
     nt_dev = home / "Desktop" / "coding" / "nighttrade"  # source of truth for code
-    nt_deployed = home / "nighttrade"                    # where launchd reads/writes
+    nt_deployed = home / "nighttrade"  # where launchd reads/writes
     return [
         Bot(
             name="daytrade",
@@ -90,7 +88,10 @@ def list_processes() -> List[Dict[str, Any]]:
     try:
         out = subprocess.run(
             ["ps", "-A", "-o", "pid=,ppid=,%mem=,%cpu=,rss=,etime=,command="],
-            capture_output=True, text=True, timeout=5, check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         ).stdout
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return []
@@ -105,17 +106,21 @@ def list_processes() -> List[Dict[str, Any]]:
         pid, ppid, pmem, pcpu, rss_kb, etime, command = parts
         if "python" not in command.lower():
             continue
-        rows.append({
-            "pid": int(pid), "ppid": int(ppid),
-            "pmem_pct": float(pmem), "pcpu_pct": float(pcpu),
-            "rss_mb": round(float(rss_kb) / 1024.0, 1),
-            "etime": etime, "command": command,
-        })
+        rows.append(
+            {
+                "pid": int(pid),
+                "ppid": int(ppid),
+                "pmem_pct": float(pmem),
+                "pcpu_pct": float(pcpu),
+                "rss_mb": round(float(rss_kb) / 1024.0, 1),
+                "etime": etime,
+                "command": command,
+            }
+        )
     return rows
 
 
-def find_bot_processes(bot: Bot, snapshot: List[Dict[str, Any]]
-                       ) -> List[Dict[str, Any]]:
+def find_bot_processes(bot: Bot, snapshot: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     matched: List[Dict[str, Any]] = []
     for p in snapshot:
         cmd = p["command"]
@@ -130,7 +135,10 @@ def tail_file(path: Optional[Path], lines: int = 30) -> List[str]:
     try:
         out = subprocess.run(
             ["tail", "-n", str(lines), str(path)],
-            capture_output=True, text=True, timeout=5, check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         ).stdout
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return []
@@ -142,8 +150,7 @@ def db_summary(db_path: Optional[Path]) -> Dict[str, Any]:
     if not db_path or not db_path.exists():
         return {"available": False}
     try:
-        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True,
-                              timeout=2)
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2)
         con.row_factory = sqlite3.Row
         run = con.execute(
             "SELECT id, pid, status, started_ts, stopped_ts, "
@@ -151,12 +158,9 @@ def db_summary(db_path: Optional[Path]) -> Dict[str, Any]:
             "ORDER BY id DESC LIMIT 1"
         ).fetchone()
         closed = con.execute(
-            "SELECT COUNT(*), COALESCE(SUM(pnl), 0) FROM paper_trades "
-            "WHERE status='closed'"
+            "SELECT COUNT(*), COALESCE(SUM(pnl), 0) FROM paper_trades " "WHERE status='closed'"
         ).fetchone()
-        open_n = con.execute(
-            "SELECT COUNT(*) FROM paper_trades WHERE status='open'"
-        ).fetchone()
+        open_n = con.execute("SELECT COUNT(*) FROM paper_trades WHERE status='open'").fetchone()
         # Belt+suspenders: only count REAL errors. Rows whose context
         # starts with 'alert:' are informational market/learning alerts
         # (e.g. 'VETUSDT illiquid') that were historically miswritten to
@@ -687,8 +691,7 @@ setInterval(refresh, 5000);
 
 def create_app(bots: Optional[List[Bot]] = None) -> FastAPI:
     bots = bots if bots is not None else default_bots()
-    app = FastAPI(title="daytrade — mission control",
-                  docs_url="/api/docs")
+    app = FastAPI(title="daytrade — mission control", docs_url="/api/docs")
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -705,34 +708,44 @@ def create_app(bots: Optional[List[Bot]] = None) -> FastAPI:
             db = db_summary(b.db_path)
             hb_age = None
             if db.get("available") and db.get("latest_run"):
-                hb_age = heartbeat_age_seconds(
-                    db["latest_run"].get("last_heartbeat_ts"))
-            out_bots.append({
-                "name": b.name,
-                "notes": b.notes,
-                "project_root": str(b.project_root),
-                "dashboard_url": b.dashboard_url,
-                "processes": procs,
-                "log_tail": tail_file(b.log_path, lines=30),
-                "db": db,
-                "heartbeat_age_seconds": hb_age,
-                "ram_history": ram_series.get(b.name, []),
-                "total_rss_mb": round(sum((p.get("rss_mb") or 0)
-                                          for p in procs), 1),
-            })
+                hb_age = heartbeat_age_seconds(db["latest_run"].get("last_heartbeat_ts"))
+            out_bots.append(
+                {
+                    "name": b.name,
+                    "notes": b.notes,
+                    "project_root": str(b.project_root),
+                    "dashboard_url": b.dashboard_url,
+                    "processes": procs,
+                    "log_tail": tail_file(b.log_path, lines=30),
+                    "db": db,
+                    "heartbeat_age_seconds": hb_age,
+                    "ram_history": ram_series.get(b.name, []),
+                    "total_rss_mb": round(sum((p.get("rss_mb") or 0) for p in procs), 1),
+                }
+            )
         # Append current RAM samples so the next request has fresh history
         now_iso = datetime.now(timezone.utc).isoformat()
-        _ram.append([
-            {"ts": now_iso, "bot": b["name"], "pid": p["pid"],
-             "rss_mb": p.get("rss_mb"), "pcpu_pct": p.get("pcpu_pct")}
-            for b in out_bots for p in b["processes"]
-        ])
-        return JSONResponse({
-            "now": now_iso,
-            "host": os.uname().nodename,
-            "bots": out_bots,
-            "all_python_processes": snapshot,
-        })
+        _ram.append(
+            [
+                {
+                    "ts": now_iso,
+                    "bot": b["name"],
+                    "pid": p["pid"],
+                    "rss_mb": p.get("rss_mb"),
+                    "pcpu_pct": p.get("pcpu_pct"),
+                }
+                for b in out_bots
+                for p in b["processes"]
+            ]
+        )
+        return JSONResponse(
+            {
+                "now": now_iso,
+                "host": os.uname().nodename,
+                "bots": out_bots,
+                "all_python_processes": snapshot,
+            }
+        )
 
     @app.get("/api/health")
     def health() -> JSONResponse:

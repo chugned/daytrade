@@ -7,7 +7,7 @@ loop from a 30-day live window to minutes. Research only — no orders.
 
 from __future__ import annotations
 
-from .history import HISTORY_DB_PATH, HistoryStore, INTERVAL_MS, download_history
+from .history import HISTORY_DB_PATH, INTERVAL_MS, HistoryStore, download_history
 from .lab import ResearchResult, render_research, run_research
 
 __all__ = [

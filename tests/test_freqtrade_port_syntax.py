@@ -25,19 +25,22 @@ _PORT = Path(__file__).resolve().parents[1] / "freqtrade-port"
 def test_strategy_file_is_valid_python():
     src = (_PORT / "strategies" / "DaytradeStrategy.py").read_text("utf-8")
     tree = ast.parse(src)
-    classes = [n.name for n in ast.walk(tree)
-               if isinstance(n, ast.ClassDef)]
+    classes = [n.name for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
     assert "DaytradeStrategy" in classes
 
 
 def test_strategy_file_declares_the_four_gates():
     src = (_PORT / "strategies" / "DaytradeStrategy.py").read_text("utf-8")
-    for hook in ("populate_indicators", "populate_entry_trend",
-                 "populate_exit_trend", "custom_stoploss", "custom_exit",
-                 "confirm_trade_entry"):
+    for hook in (
+        "populate_indicators",
+        "populate_entry_trend",
+        "populate_exit_trend",
+        "custom_stoploss",
+        "custom_exit",
+        "confirm_trade_entry",
+    ):
         assert hook in src, f"strategy missing freqtrade hook: {hook}"
-    for gate in ("_regime_gate_passes", "_calibration_gate_passes",
-                 "_meta_gate_passes"):
+    for gate in ("_regime_gate_passes", "_calibration_gate_passes", "_meta_gate_passes"):
         assert gate in src, f"strategy missing gate: {gate}"
 
 

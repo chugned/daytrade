@@ -20,9 +20,9 @@ class SizingResult:
     """Outcome of a sizing calculation."""
 
     quantity: float
-    risk_amount: float          # currency risked between entry and stop
-    notional: float             # entry_price * quantity
-    capped_by_notional: bool    # True if the notional cap bound the size
+    risk_amount: float  # currency risked between entry and stop
+    notional: float  # entry_price * quantity
+    capped_by_notional: bool  # True if the notional cap bound the size
     reason: str = ""
 
     @property

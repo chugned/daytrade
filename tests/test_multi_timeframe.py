@@ -12,18 +12,26 @@ from daytrade.observatory.multi_timeframe import (
 )
 
 
-def _linear_candles(n: int = 240, start_price: float = 100.0,
-                    drift_per_bar: float = 0.001) -> List[OHLCV]:
+def _linear_candles(
+    n: int = 240, start_price: float = 100.0, drift_per_bar: float = 0.001
+) -> List[OHLCV]:
     """A deterministic candle ramp — used to construct trended timeframes."""
     t0 = datetime(2026, 5, 31, 0, 0, tzinfo=timezone.utc)
     candles: List[OHLCV] = []
     p = start_price
     for i in range(n):
         nxt = p * (1.0 + drift_per_bar)
-        candles.append(OHLCV(symbol="X",
-                             timestamp=t0 + timedelta(minutes=i),
-                             open=p, high=max(p, nxt), low=min(p, nxt),
-                             close=nxt, volume=1.0))
+        candles.append(
+            OHLCV(
+                symbol="X",
+                timestamp=t0 + timedelta(minutes=i),
+                open=p,
+                high=max(p, nxt),
+                low=min(p, nxt),
+                close=nxt,
+                volume=1.0,
+            )
+        )
         p = nxt
     return candles
 

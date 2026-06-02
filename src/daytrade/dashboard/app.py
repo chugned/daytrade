@@ -15,7 +15,7 @@ import json
 import os
 import secrets
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -43,12 +43,17 @@ class _BasicAuthMiddleware:
     async def __call__(self, scope, receive, send) -> None:
         if scope["type"] in ("http", "websocket") and not self._ok(scope):
             if scope["type"] == "http":
-                await send({"type": "http.response.start", "status": 401,
-                            "headers": [(b"www-authenticate",
-                                         b'Basic realm="daytrade dashboard"'),
-                                        (b"content-type", b"text/plain")]})
-                await send({"type": "http.response.body",
-                            "body": b"Authentication required"})
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 401,
+                        "headers": [
+                            (b"www-authenticate", b'Basic realm="daytrade dashboard"'),
+                            (b"content-type", b"text/plain"),
+                        ],
+                    }
+                )
+                await send({"type": "http.response.body", "body": b"Authentication required"})
             else:  # reject the websocket handshake
                 await send({"type": "websocket.close", "code": 1008})
             return
@@ -70,17 +75,17 @@ class _BasicAuthMiddleware:
 
 def create_app(db_path: Path | str = DEFAULT_DB_PATH) -> FastAPI:
     """Build the dashboard FastAPI application bound to ``db_path``."""
-    app = FastAPI(title="daytrade — Market Safety Observatory",
-                  docs_url="/api/docs")
+    app = FastAPI(title="daytrade — Market Safety Observatory", docs_url="/api/docs")
 
     password = os.environ.get(_PASSWORD_ENV, "").strip()
     if password:
         app.add_middleware(_BasicAuthMiddleware, password=password)
-        _log.info("dashboard password protection ENABLED (%s is set)",
-                  _PASSWORD_ENV)
+        _log.info("dashboard password protection ENABLED (%s is set)", _PASSWORD_ENV)
     else:
-        _log.info("dashboard password protection disabled — set %s to "
-                  "require a password", _PASSWORD_ENV)
+        _log.info(
+            "dashboard password protection disabled — set %s to " "require a password",
+            _PASSWORD_ENV,
+        )
 
     def data() -> DashboardData:
         return DashboardData(db_path)
@@ -167,8 +172,9 @@ def create_app(db_path: Path | str = DEFAULT_DB_PATH) -> FastAPI:
                 delta = {
                     "pnl_abs": s_pnl - p_pnl,
                     "pnl_rel_pct": rel_pct,
-                    "verdict": ("within_15pct" if abs(rel_pct) <= 15
-                                else "outside_15pct_investigate"),
+                    "verdict": (
+                        "within_15pct" if abs(rel_pct) <= 15 else "outside_15pct_investigate"
+                    ),
                 }
         return {
             "paper": paper_sum,
@@ -256,9 +262,15 @@ def create_app(db_path: Path | str = DEFAULT_DB_PATH) -> FastAPI:
 
     @app.get("/api/health")
     def health() -> JSONResponse:
-        return JSONResponse({"ok": True, "real_trading": False,
-                             "paper_only": True, "wallets": False,
-                             "bank_transfers": False})
+        return JSONResponse(
+            {
+                "ok": True,
+                "real_trading": False,
+                "paper_only": True,
+                "wallets": False,
+                "bank_transfers": False,
+            }
+        )
 
     async def _ws_loop(socket: WebSocket) -> None:
         await socket.accept()

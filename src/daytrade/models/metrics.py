@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict, List
+from typing import List
 
 from pydantic import Field, field_validator
 
@@ -40,7 +40,9 @@ class BacktestMetrics(DaytradeModel):
         description="Mean/std of per-bar returns * sqrt(bars). NOT annualized.",
     )
     exposure_pct: float = Field(
-        default=0.0, ge=0.0, le=1.0,
+        default=0.0,
+        ge=0.0,
+        le=1.0,
         description="Fraction of bars holding a position.",
     )
     total_fees: float = Field(default=0.0, ge=0.0)
@@ -75,8 +77,7 @@ class WalkForwardFold(DaytradeModel):
     test_accuracy: float = Field(ge=0.0, le=1.0)
     test_auc: float = Field(default=0.5, ge=0.0, le=1.0)
 
-    @field_validator("train_start", "train_end", "test_start", "test_end",
-                     mode="before")
+    @field_validator("train_start", "train_end", "test_start", "test_end", mode="before")
     @classmethod
     def _ts(cls, v: object) -> datetime:
         return normalize_timestamp(v)

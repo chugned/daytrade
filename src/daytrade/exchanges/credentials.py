@@ -67,15 +67,20 @@ class ApiKeyPermissions:
 
     @property
     def is_read_only(self) -> bool:
-        return not (self.can_trade or self.can_withdraw
-                    or self.can_margin or self.can_futures)
+        return not (self.can_trade or self.can_withdraw or self.can_margin or self.can_futures)
 
     def describe(self) -> str:
-        scopes = [name for name, on in (
-            ("read", self.can_read), ("trade", self.can_trade),
-            ("withdraw", self.can_withdraw), ("margin", self.can_margin),
-            ("futures", self.can_futures),
-        ) if on]
+        scopes = [
+            name
+            for name, on in (
+                ("read", self.can_read),
+                ("trade", self.can_trade),
+                ("withdraw", self.can_withdraw),
+                ("margin", self.can_margin),
+                ("futures", self.can_futures),
+            )
+            if on
+        ]
         return ", ".join(scopes) or "none"
 
 
@@ -116,11 +121,8 @@ def load_sandbox_credentials(exchange: str) -> Optional[ApiCredentials]:
     if not api_key and not api_secret:
         return None
     if not api_key or not api_secret:
-        raise MissingCredentialsError(
-            f"{exchange}: both {key_var} and {secret_var} must be set"
-        )
-    return ApiCredentials(exchange=exchange, api_key=api_key,
-                          api_secret=api_secret)
+        raise MissingCredentialsError(f"{exchange}: both {key_var} and {secret_var} must be set")
+    return ApiCredentials(exchange=exchange, api_key=api_key, api_secret=api_secret)
 
 
 def enforce_key_safety(

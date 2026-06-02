@@ -33,27 +33,28 @@ try:
     # ADF approximation so the rest of the project keeps working without
     # a heavyweight new dependency.
     from statsmodels.tsa.stattools import adfuller as _adfuller
+
     _HAVE_STATSMODELS = True
 except ImportError:  # pragma: no cover - dependency-presence varies
     _HAVE_STATSMODELS = False
 
 
 class PairSignal(str, Enum):
-    HOLD = "HOLD"            # within band, do nothing
-    LONG_SPREAD = "LONG_SPREAD"     # buy Y, sell X — spread expected to rise
-    SHORT_SPREAD = "SHORT_SPREAD"   # sell Y, buy X — spread expected to fall
-    EXIT = "EXIT"            # close — spread reverted to its mean
+    HOLD = "HOLD"  # within band, do nothing
+    LONG_SPREAD = "LONG_SPREAD"  # buy Y, sell X — spread expected to rise
+    SHORT_SPREAD = "SHORT_SPREAD"  # sell Y, buy X — spread expected to fall
+    EXIT = "EXIT"  # close — spread reverted to its mean
 
 
 @dataclass(frozen=True)
 class PairFit:
     """Result of fitting the hedge ratio + stationarity check on a pair."""
 
-    beta: float                 # hedge ratio (y ≈ β · x in log-price)
+    beta: float  # hedge ratio (y ≈ β · x in log-price)
     spread_mean: float
     spread_std: float
-    adf_pvalue: float           # lower = more stationary
-    is_cointegrated: bool       # ADF p < threshold AND beta finite
+    adf_pvalue: float  # lower = more stationary
+    is_cointegrated: bool  # ADF p < threshold AND beta finite
 
 
 @dataclass(frozen=True)
@@ -124,11 +125,21 @@ def fit_pair(
     y = np.asarray(y_prices, dtype=float)
     x = np.asarray(x_prices, dtype=float)
     if y.shape != x.shape or y.size < 30:
-        return PairFit(beta=float("nan"), spread_mean=0.0, spread_std=0.0,
-                       adf_pvalue=1.0, is_cointegrated=False)
+        return PairFit(
+            beta=float("nan"),
+            spread_mean=0.0,
+            spread_std=0.0,
+            adf_pvalue=1.0,
+            is_cointegrated=False,
+        )
     if np.any(y <= 0) or np.any(x <= 0):
-        return PairFit(beta=float("nan"), spread_mean=0.0, spread_std=0.0,
-                       adf_pvalue=1.0, is_cointegrated=False)
+        return PairFit(
+            beta=float("nan"),
+            spread_mean=0.0,
+            spread_std=0.0,
+            adf_pvalue=1.0,
+            is_cointegrated=False,
+        )
     ly = np.log(y)
     lx = np.log(x)
     # De-mean before fitting so β is independent of the level of each leg.
@@ -136,14 +147,24 @@ def fit_pair(
     lx_c = lx - lx.mean()
     beta = _ols_beta(ly_c, lx_c)
     if not np.isfinite(beta):
-        return PairFit(beta=float("nan"), spread_mean=0.0, spread_std=0.0,
-                       adf_pvalue=1.0, is_cointegrated=False)
+        return PairFit(
+            beta=float("nan"),
+            spread_mean=0.0,
+            spread_std=0.0,
+            adf_pvalue=1.0,
+            is_cointegrated=False,
+        )
     spread = ly - beta * lx
     spread_mean = float(spread.mean())
     spread_std = float(spread.std(ddof=1)) if spread.size > 1 else 0.0
     if spread_std <= 0.0:
-        return PairFit(beta=beta, spread_mean=spread_mean, spread_std=0.0,
-                       adf_pvalue=1.0, is_cointegrated=False)
+        return PairFit(
+            beta=beta,
+            spread_mean=spread_mean,
+            spread_std=0.0,
+            adf_pvalue=1.0,
+            is_cointegrated=False,
+        )
     if _HAVE_STATSMODELS:
         try:
             adf_stat, p, *_ = _adfuller(spread, autolag="AIC")
@@ -153,8 +174,11 @@ def fit_pair(
     else:
         pvalue = _fallback_adf(spread)
     return PairFit(
-        beta=beta, spread_mean=spread_mean, spread_std=spread_std,
-        adf_pvalue=pvalue, is_cointegrated=pvalue < adf_threshold,
+        beta=beta,
+        spread_mean=spread_mean,
+        spread_std=spread_std,
+        adf_pvalue=pvalue,
+        is_cointegrated=pvalue < adf_threshold,
     )
 
 
@@ -212,7 +236,9 @@ def analyse_pair(
     fit = fit_pair(y_prices, x_prices, adf_threshold=adf_threshold)
     if not fit.is_cointegrated:
         return PairReading(
-            signal=PairSignal.HOLD, z=float("nan"), fit=fit,
+            signal=PairSignal.HOLD,
+            z=float("nan"),
+            fit=fit,
             reason=f"not cointegrated (adf p={fit.adf_pvalue:.3f})",
         )
     z = latest_z(y_prices, x_prices, fit)
@@ -224,6 +250,7 @@ def analyse_pair(
 # ---------------------------------------------------------------------------
 # Paper backtest for sweeps. NOT used by the live loop.
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class PairBacktestResult:
@@ -262,7 +289,7 @@ def backtest_pair(
 
     for i in range(lookback, n):
         if fit is None or (i - lookback) % refit_every == 0:
-            fit = fit_pair(y[i - lookback: i], x[i - lookback: i])
+            fit = fit_pair(y[i - lookback : i], x[i - lookback : i])
         if fit is None or not fit.is_cointegrated:
             continue
         last_y = float(y[i])
@@ -292,14 +319,14 @@ def backtest_pair(
             # trading the spread we opened, not whatever the latest fit
             # now calls a spread.
             held_spread = np.log(last_y) - entry_beta * np.log(last_x)
-            held_z = ((held_spread - entry_spread_value) / entry_sigma
-                      if entry_sigma > 0 else 0.0)
+            held_z = (held_spread - entry_spread_value) / entry_sigma if entry_sigma > 0 else 0.0
             # Exit when the spread has reverted by entry_z - exit_z
             # standard deviations toward the entry-time mean (which
             # the position was opened ±entry_z away from).
             target_revert = entry_z - exit_z
-            if (in_pos == -1 and held_z <= -target_revert) or \
-               (in_pos == +1 and held_z >= target_revert):
+            if (in_pos == -1 and held_z <= -target_revert) or (
+                in_pos == +1 and held_z >= target_revert
+            ):
                 pnl = in_pos * (entry_spread_value - held_spread)
                 pnls.append(pnl)
                 in_pos = 0

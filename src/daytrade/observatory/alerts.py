@@ -10,9 +10,8 @@ not re-alert every cycle.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 from ..runtime import get_logger
@@ -31,14 +30,18 @@ LEVEL_CRITICAL = "critical"
 class Alert:
     """A single alert event."""
 
-    level: str       # info | warning | critical
-    kind: str        # panic | illiquid | drawdown | accuracy | crash | api
+    level: str  # info | warning | critical
+    kind: str  # panic | illiquid | drawdown | accuracy | crash | api
     message: str
     timestamp: datetime
 
     def to_dict(self) -> Dict[str, str]:
-        return {"level": self.level, "kind": self.kind,
-                "message": self.message, "timestamp": self.timestamp.isoformat()}
+        return {
+            "level": self.level,
+            "kind": self.kind,
+            "message": self.message,
+            "timestamp": self.timestamp.isoformat(),
+        }
 
 
 def build_condition_alerts(
@@ -53,27 +56,44 @@ def build_condition_alerts(
     """Derive the alerts implied by the current observatory state."""
     alerts: List[Alert] = []
     if global_condition == "PANIC":
-        alerts.append(Alert(LEVEL_CRITICAL, "panic",
-                            "Market condition is PANIC — observation only.", now))
+        alerts.append(
+            Alert(LEVEL_CRITICAL, "panic", "Market condition is PANIC — observation only.", now)
+        )
     for sym in illiquid_symbols:
-        alerts.append(Alert(LEVEL_WARNING, "illiquid",
-                            f"{sym} is illiquid — excluded from paper trading.", now))
+        alerts.append(
+            Alert(
+                LEVEL_WARNING, "illiquid", f"{sym} is illiquid — excluded from paper trading.", now
+            )
+        )
     if paper_drawdown_pct > max_drawdown_pct:
-        alerts.append(Alert(LEVEL_CRITICAL, "drawdown",
-                            f"Paper drawdown {paper_drawdown_pct:.1%} exceeds "
-                            f"limit {max_drawdown_pct:.1%}.", now))
+        alerts.append(
+            Alert(
+                LEVEL_CRITICAL,
+                "drawdown",
+                f"Paper drawdown {paper_drawdown_pct:.1%} exceeds "
+                f"limit {max_drawdown_pct:.1%}.",
+                now,
+            )
+        )
     if recent_accuracy is not None and recent_accuracy < 0.40:
-        alerts.append(Alert(LEVEL_WARNING, "accuracy",
-                            f"Model accuracy collapsed to {recent_accuracy:.0%} "
-                            "— predictions flagged unreliable.", now))
+        alerts.append(
+            Alert(
+                LEVEL_WARNING,
+                "accuracy",
+                f"Model accuracy collapsed to {recent_accuracy:.0%} "
+                "— predictions flagged unreliable.",
+                now,
+            )
+        )
     return alerts
 
 
 class AlertManager:
     """Delivers alerts to console + log, with per-kind cooldown."""
 
-    def __init__(self, db=None, discord_webhook: Optional[str] = None,
-                 allow_network: bool = False) -> None:
+    def __init__(
+        self, db=None, discord_webhook: Optional[str] = None, allow_network: bool = False
+    ) -> None:
         self._db = db
         self._discord_webhook = discord_webhook
         self._allow_network = allow_network
@@ -85,13 +105,17 @@ class AlertManager:
         Returns True if the alert was actually delivered.
         """
         last = self._last_emitted.get(alert.kind)
-        if (not force and last is not None
-                and alert.timestamp - last < timedelta(seconds=_COOLDOWN_SECONDS)):
+        if (
+            not force
+            and last is not None
+            and alert.timestamp - last < timedelta(seconds=_COOLDOWN_SECONDS)
+        ):
             return False
         self._last_emitted[alert.kind] = alert.timestamp
 
-        prefix = {"info": "[ALERT]", "warning": "[ALERT ⚠]",
-                  "critical": "[ALERT ‼]"}.get(alert.level, "[ALERT]")
+        prefix = {"info": "[ALERT]", "warning": "[ALERT ⚠]", "critical": "[ALERT ‼]"}.get(
+            alert.level, "[ALERT]"
+        )
         line = f"{prefix} {alert.kind.upper()}: {alert.message}"
         # Console + log file (the log handler is configured by the observer).
         print(line, flush=True)
@@ -126,9 +150,11 @@ class AlertManager:
             return
         try:
             import httpx
+
             with httpx.Client(timeout=5.0) as client:
-                client.post(self._discord_webhook,
-                            json={"content": f"**{alert.kind}** — {alert.message}"})
+                client.post(
+                    self._discord_webhook, json={"content": f"**{alert.kind}** — {alert.message}"}
+                )
         except Exception as exc:  # noqa: BLE001
             _log.warning("discord alert failed: %s", exc)
 

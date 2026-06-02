@@ -17,7 +17,7 @@ import numpy as np
 
 from ..indicators import core
 from ..indicators.frame import ohlcv_to_frame
-from ..models import MacroSignal, OHLCV
+from ..models import OHLCV, MacroSignal
 from .scenarios import MacroScenario, get_scenario
 
 
@@ -68,8 +68,7 @@ class MockMacroAnalyzer:
             return get_scenario("risk_off")
         return get_scenario("neutral")
 
-    def _to_signal(self, symbol: str, ts, sc: MacroScenario,
-                   derived: bool) -> MacroSignal:
+    def _to_signal(self, symbol: str, ts, sc: MacroScenario, derived: bool) -> MacroSignal:
         how = "derived from price action" if derived else "explicit scenario"
         return MacroSignal(
             symbol=symbol,

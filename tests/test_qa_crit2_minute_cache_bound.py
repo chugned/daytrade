@@ -7,8 +7,6 @@ after 12 days). The cap (_MINUTE_CLOSE_CACHE_MAX) keeps it constant.
 
 from __future__ import annotations
 
-import pytest
-
 from daytrade.observatory.real_feed import RealMarketFeed
 
 

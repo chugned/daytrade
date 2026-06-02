@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from daytrade.features import FeaturePipeline, compute_features, feature_columns
 from daytrade.indicators.frame import ohlcv_to_frame
 
@@ -30,6 +28,7 @@ def test_features_have_no_inf(uptrend_candles, config):
     frame = ohlcv_to_frame(uptrend_candles)
     feats = compute_features(frame, config.features, config.indicators)
     import numpy as np
+
     assert not np.isinf(feats.to_numpy(dtype=float)).any()
 
 

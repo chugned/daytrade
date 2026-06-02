@@ -12,17 +12,13 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from daytrade.live import (
-    Exchange,
-    ExchangeOrder,
     LiveBroker,
     LiveBrokerError,
     LiveConfig,
     MockExchange,
     OrderRejected,
 )
-from daytrade.live.exchange import ExchangeUnreachable
 from daytrade.models import Side
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -37,8 +33,9 @@ def _ts(year=2026, month=7, day=1, hour=12, minute=0, second=0) -> datetime:
 
 def _make() -> tuple[LiveBroker, MockExchange]:
     ex = MockExchange(starting_balance_usdt=1000.0)
-    cfg = LiveConfig(dry_run=True, max_stake_per_trade=250.0,
-                     max_daily_loss=30.0, max_open_positions=3)
+    cfg = LiveConfig(
+        dry_run=True, max_stake_per_trade=250.0, max_daily_loss=30.0, max_open_positions=3
+    )
     broker = LiveBroker(cfg, ex)
     return broker, ex
 
@@ -76,7 +73,10 @@ def test_buy_then_sell_round_trip():
     broker, _ = _make()
     t0 = _ts()
     fill_buy = broker.submit_market_order(
-        "BTCUSDT", Side.BUY, quantity=0.001, reference_price=100_000.0,
+        "BTCUSDT",
+        Side.BUY,
+        quantity=0.001,
+        reference_price=100_000.0,
         timestamp=t0,
     )
     assert fill_buy.side is Side.BUY
@@ -87,7 +87,10 @@ def test_buy_then_sell_round_trip():
 
     # Sell back — same minute bucket would dedupe, so use a later ts.
     fill_sell = broker.submit_market_order(
-        "BTCUSDT", Side.SELL, quantity=0.001, reference_price=101_000.0,
+        "BTCUSDT",
+        Side.SELL,
+        quantity=0.001,
+        reference_price=101_000.0,
         timestamp=t0 + timedelta(minutes=2),
     )
     assert fill_sell.side is Side.SELL
@@ -104,8 +107,11 @@ def test_idempotent_within_same_minute_bucket():
     broker, ex = _make()
     t = _ts()
     f1 = broker.submit_market_order(
-        "BTCUSDT", Side.BUY, quantity=0.001,
-        reference_price=100_000.0, timestamp=t,
+        "BTCUSDT",
+        Side.BUY,
+        quantity=0.001,
+        reference_price=100_000.0,
+        timestamp=t,
     )
     # Same timestamp bucket -> same clientOrderId -> exchange returns the
     # prior fill rather than opening a new one. The LiveBroker DOES apply
@@ -122,20 +128,29 @@ def test_sell_with_no_position_raises():
     broker, _ = _make()
     with pytest.raises(LiveBrokerError):
         broker.submit_market_order(
-            "BTCUSDT", Side.SELL, quantity=0.001,
-            reference_price=100_000.0, timestamp=_ts(),
+            "BTCUSDT",
+            Side.SELL,
+            quantity=0.001,
+            reference_price=100_000.0,
+            timestamp=_ts(),
         )
 
 
 def test_sell_clamps_to_held_quantity():
     broker, _ = _make()
     broker.submit_market_order(
-        "BTCUSDT", Side.BUY, quantity=0.001,
-        reference_price=100_000.0, timestamp=_ts(hour=10),
+        "BTCUSDT",
+        Side.BUY,
+        quantity=0.001,
+        reference_price=100_000.0,
+        timestamp=_ts(hour=10),
     )
     fill = broker.submit_market_order(
-        "BTCUSDT", Side.SELL, quantity=0.005,  # 5× what we have
-        reference_price=100_500.0, timestamp=_ts(hour=11),
+        "BTCUSDT",
+        Side.SELL,
+        quantity=0.005,  # 5× what we have
+        reference_price=100_500.0,
+        timestamp=_ts(hour=11),
     )
     assert fill.quantity == pytest.approx(0.001)
 
@@ -149,8 +164,11 @@ def test_stake_cap_rejects_oversized_order():
     broker, _ = _make()  # max_stake_per_trade=250
     with pytest.raises(LiveBrokerError, match="stake"):
         broker.submit_market_order(
-            "BTCUSDT", Side.BUY, quantity=0.01,  # 0.01 * 100k = 1000 > 250
-            reference_price=100_000.0, timestamp=_ts(),
+            "BTCUSDT",
+            Side.BUY,
+            quantity=0.01,  # 0.01 * 100k = 1000 > 250
+            reference_price=100_000.0,
+            timestamp=_ts(),
         )
 
 
@@ -158,13 +176,19 @@ def test_max_open_positions_blocks_new_buy():
     broker, _ = _make()  # max_open_positions=3
     for i, sym in enumerate(("BTCUSDT", "ETHUSDT", "SOLUSDT")):
         broker.submit_market_order(
-            sym, Side.BUY, quantity=0.001,
-            reference_price=100.0, timestamp=_ts(hour=10 + i),
+            sym,
+            Side.BUY,
+            quantity=0.001,
+            reference_price=100.0,
+            timestamp=_ts(hour=10 + i),
         )
     with pytest.raises(LiveBrokerError, match="max_open_positions"):
         broker.submit_market_order(
-            "BNBUSDT", Side.BUY, quantity=0.001,
-            reference_price=100.0, timestamp=_ts(hour=14),
+            "BNBUSDT",
+            Side.BUY,
+            quantity=0.001,
+            reference_price=100.0,
+            timestamp=_ts(hour=14),
         )
 
 
@@ -173,13 +197,19 @@ def test_daily_loss_cap_halts_new_buys_but_allows_close():
     t = _ts(hour=10)
     # Open a position, then close it at a $50 loss so the cap trips.
     broker.submit_market_order(
-        "BTCUSDT", Side.BUY, quantity=0.001,
-        reference_price=100_000.0, timestamp=t,
+        "BTCUSDT",
+        Side.BUY,
+        quantity=0.001,
+        reference_price=100_000.0,
+        timestamp=t,
     )
     # Sell at much lower → big loss
     broker.submit_market_order(
-        "BTCUSDT", Side.SELL, quantity=0.001,
-        reference_price=50_000.0, timestamp=t + timedelta(minutes=5),
+        "BTCUSDT",
+        Side.SELL,
+        quantity=0.001,
+        reference_price=50_000.0,
+        timestamp=t + timedelta(minutes=5),
     )
     pnl = broker.realized_pnl
     assert pnl < -30, f"expected big loss to trip cap, got {pnl:.2f}"
@@ -187,8 +217,11 @@ def test_daily_loss_cap_halts_new_buys_but_allows_close():
     # A new BUY same day must now be refused
     with pytest.raises(LiveBrokerError, match="daily loss-cap"):
         broker.submit_market_order(
-            "ETHUSDT", Side.BUY, quantity=0.0001,
-            reference_price=3000.0, timestamp=t + timedelta(minutes=10),
+            "ETHUSDT",
+            Side.BUY,
+            quantity=0.0001,
+            reference_price=3000.0,
+            timestamp=t + timedelta(minutes=10),
         )
 
 
@@ -196,18 +229,27 @@ def test_daily_loss_cap_resets_next_day():
     broker, _ = _make()
     t = _ts(hour=10)
     broker.submit_market_order(
-        "BTCUSDT", Side.BUY, quantity=0.001,
-        reference_price=100_000.0, timestamp=t,
+        "BTCUSDT",
+        Side.BUY,
+        quantity=0.001,
+        reference_price=100_000.0,
+        timestamp=t,
     )
     broker.submit_market_order(
-        "BTCUSDT", Side.SELL, quantity=0.001,
-        reference_price=50_000.0, timestamp=t + timedelta(minutes=5),
+        "BTCUSDT",
+        Side.SELL,
+        quantity=0.001,
+        reference_price=50_000.0,
+        timestamp=t + timedelta(minutes=5),
     )
     # New UTC day → cap reset, BUYs allowed again
     next_day = _ts(year=2026, month=7, day=2, hour=10)
     fill = broker.submit_market_order(
-        "ETHUSDT", Side.BUY, quantity=0.0001,
-        reference_price=3000.0, timestamp=next_day,
+        "ETHUSDT",
+        Side.BUY,
+        quantity=0.0001,
+        reference_price=3000.0,
+        timestamp=next_day,
     )
     assert fill.quantity == pytest.approx(0.0001)
 
@@ -223,8 +265,11 @@ def test_exchange_unreachable_raises_no_state_change():
     cash_before = broker.cash
     with pytest.raises(LiveBrokerError):
         broker.submit_market_order(
-            "BTCUSDT", Side.BUY, quantity=0.001,
-            reference_price=100_000.0, timestamp=_ts(),
+            "BTCUSDT",
+            Side.BUY,
+            quantity=0.001,
+            reference_price=100_000.0,
+            timestamp=_ts(),
         )
     assert broker.cash == cash_before
     assert not broker.has_position("BTCUSDT")
@@ -237,8 +282,11 @@ def test_exchange_rejection_propagates_no_state_change():
     cash_before = broker.cash
     with pytest.raises(OrderRejected):
         broker.submit_market_order(
-            "BTCUSDT", Side.BUY, quantity=0.001,
-            reference_price=100_000.0, timestamp=_ts(),
+            "BTCUSDT",
+            Side.BUY,
+            quantity=0.001,
+            reference_price=100_000.0,
+            timestamp=_ts(),
         )
     assert broker.cash == cash_before
     assert not broker.has_position("BTCUSDT")
@@ -250,8 +298,11 @@ def test_insufficient_balance_rejected():
     broker = LiveBroker(cfg, ex)
     with pytest.raises(OrderRejected):
         broker.submit_market_order(
-            "BTCUSDT", Side.BUY, quantity=0.001,
-            reference_price=100_000.0, timestamp=_ts(),
+            "BTCUSDT",
+            Side.BUY,
+            quantity=0.001,
+            reference_price=100_000.0,
+            timestamp=_ts(),
         )
 
 
@@ -264,8 +315,11 @@ def test_equity_reflects_position_value():
     broker, _ = _make()
     t = _ts(hour=10)
     broker.submit_market_order(
-        "BTCUSDT", Side.BUY, quantity=0.001,
-        reference_price=100_000.0, timestamp=t,
+        "BTCUSDT",
+        Side.BUY,
+        quantity=0.001,
+        reference_price=100_000.0,
+        timestamp=t,
     )
     eq_flat = broker.equity({"BTCUSDT": 100_000.0})
     eq_up = broker.equity({"BTCUSDT": 110_000.0})
@@ -276,12 +330,18 @@ def test_round_trip_pnl_is_negative_after_fees_when_price_flat():
     broker, _ = _make()
     t = _ts(hour=10)
     broker.submit_market_order(
-        "BTCUSDT", Side.BUY, quantity=0.001,
-        reference_price=100_000.0, timestamp=t,
+        "BTCUSDT",
+        Side.BUY,
+        quantity=0.001,
+        reference_price=100_000.0,
+        timestamp=t,
     )
     broker.submit_market_order(
-        "BTCUSDT", Side.SELL, quantity=0.001,
-        reference_price=100_000.0, timestamp=t + timedelta(minutes=5),
+        "BTCUSDT",
+        Side.SELL,
+        quantity=0.001,
+        reference_price=100_000.0,
+        timestamp=t + timedelta(minutes=5),
     )
     # Fees + slippage should make a flat round-trip slightly negative.
     assert broker.realized_pnl < 0.0
@@ -313,6 +373,8 @@ def test_live_module_does_not_call_real_exchange_directly():
         assert "import ccxt" not in src, (
             f"live/{name}.py imports ccxt — this would enable live trading "
             "without explicit gating. Live exchange writes must go through "
-            "the BinanceExchange adapter in live/binance.py only.")
-        assert "from binance" not in src, (
-            f"live/{name}.py imports python-binance directly — same problem.")
+            "the BinanceExchange adapter in live/binance.py only."
+        )
+        assert (
+            "from binance" not in src
+        ), f"live/{name}.py imports python-binance directly — same problem."

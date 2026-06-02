@@ -48,7 +48,7 @@ def compute_features(
     high = frame["high"]
     low = frame["low"]
     volume = frame["volume"]
-    feats: "dict[str, pd.Series]" = {}
+    feats: dict[str, pd.Series] = {}
 
     # --- Multi-horizon returns ---
     for w in fcfg.return_windows:
@@ -76,7 +76,7 @@ def compute_features(
     feats["volatility"] = core.volatility(close, icfg.volatility_window)
 
     # --- Candle geometry ---
-    rng = (high - low)
+    rng = high - low
     feats["range_pct"] = rng / close.replace(0.0, np.nan)
     body = (close - frame["open"]).abs()
     feats["body_to_range"] = body / rng.replace(0.0, np.nan)
@@ -104,10 +104,8 @@ def compute_features(
             # of the previous, FULLY CLOSED higher-TF bar. Without this the
             # 1m bars inside an unfinished HTF bucket would see "future"
             # values (data after their own timestamp), breaking causality.
-            slope_15m = slope_15m_full.shift(1).reindex(
-                frame.index, method="ffill")
-            slope_1h = slope_1h_full.shift(1).reindex(
-                frame.index, method="ffill")
+            slope_15m = slope_15m_full.shift(1).reindex(frame.index, method="ffill")
+            slope_1h = slope_1h_full.shift(1).reindex(frame.index, method="ffill")
             feats["slope_15m"] = slope_15m
             feats["slope_1h"] = slope_1h
         except Exception:  # noqa: BLE001 - never let a feature crash a cycle
@@ -121,9 +119,9 @@ def compute_features(
     # Surfaces the same signals the dedicated mean-reversion detector uses,
     # but as continuous features the meta-model can learn to weigh rather
     # than as hard binary gates.
-    feats["ret_15"] = core.returns(close, 15)             # 15-min return
-    feats["rsi_dist_oversold"] = feats["rsi"] - 30.0      # negative -> oversold
-    feats["rsi_dist_overbought"] = feats["rsi"] - 70.0    # positive -> overbought
+    feats["ret_15"] = core.returns(close, 15)  # 15-min return
+    feats["rsi_dist_oversold"] = feats["rsi"] - 30.0  # negative -> oversold
+    feats["rsi_dist_overbought"] = feats["rsi"] - 70.0  # positive -> overbought
     feats["volume_ratio_20"] = volume / vol_mean.replace(0.0, np.nan)
 
     # --- Position-in-range features (causal, ratio-style) ---------------
@@ -142,11 +140,14 @@ def compute_features(
     # docs/RESEARCH-90D-FINDINGS.md.
     open_ = frame["open"]
     prev_close = close.shift(1)
-    tr = pd.concat([
-        (high - low),
-        (high - prev_close).abs(),
-        (low - prev_close).abs(),
-    ], axis=1).max(axis=1)
+    tr = pd.concat(
+        [
+            (high - low),
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
     atr14 = tr.rolling(14, min_periods=14).mean()
     # vol baseline shifted by 1 so the ratio at bar t uses bars < t only
     vol_baseline = volume.rolling(20, min_periods=20).mean().shift(1)
@@ -154,7 +155,7 @@ def compute_features(
     body_atr_mult = body / atr14.replace(0.0, np.nan)
     vol_spike = volume / vol_baseline.replace(0.0, np.nan)
     rng_bar = (high - low).replace(0.0, np.nan)
-    lower_wick = (pd.concat([open_, close], axis=1).min(axis=1) - low)
+    lower_wick = pd.concat([open_, close], axis=1).min(axis=1) - low
     lower_wick_ratio = (lower_wick / rng_bar).clip(lower=0.0, upper=1.0)
     feats["cascade_body_atr"] = body_atr_mult
     feats["cascade_vol_spike"] = vol_spike
@@ -164,9 +165,7 @@ def compute_features(
     active = ((body_atr_mult <= -2.0) & (vol_spike >= 3.0)).astype(float)
     prev_active_body = body_atr_mult.shift(1)
     exhaustion = (
-        (prev_active_body <= -2.0)
-        & (lower_wick_ratio >= 0.55)
-        & (vol_spike >= 1.5)
+        (prev_active_body <= -2.0) & (lower_wick_ratio >= 0.55) & (vol_spike >= 1.5)
     ).astype(float)
     feats["cascade_active"] = active
     feats["cascade_exhaustion"] = exhaustion
@@ -184,19 +183,39 @@ def feature_columns(
     fcfg = feature_config or FeatureConfig()
     cols = [f"ret_{w}" for w in fcfg.return_windows]
     cols += [
-        "logret_1", "roll_std", "roll_skew", "roll_kurt",
-        "rsi", "macd", "macd_signal", "macd_hist",
-        "ema_gap", "momentum", "trend_slope", "volatility",
-        "range_pct", "body_to_range", "close_to_high",
-        "volume_z", "volume_chg",
+        "logret_1",
+        "roll_std",
+        "roll_skew",
+        "roll_kurt",
+        "rsi",
+        "macd",
+        "macd_signal",
+        "macd_hist",
+        "ema_gap",
+        "momentum",
+        "trend_slope",
+        "volatility",
+        "range_pct",
+        "body_to_range",
+        "close_to_high",
+        "volume_z",
+        "volume_chg",
         # Richer-Meta-Features additions (HTF + MR + position-in-range):
-        "slope_15m", "slope_1h",
-        "ret_15", "rsi_dist_oversold", "rsi_dist_overbought",
+        "slope_15m",
+        "slope_1h",
+        "ret_15",
+        "rsi_dist_oversold",
+        "rsi_dist_overbought",
         "volume_ratio_20",
-        "pct_from_60_high", "pct_from_60_low", "pos_in_60_range",
+        "pct_from_60_high",
+        "pct_from_60_low",
+        "pos_in_60_range",
         # Cascade-As-Feature additions:
-        "cascade_body_atr", "cascade_vol_spike", "cascade_lower_wick",
-        "cascade_active", "cascade_exhaustion",
+        "cascade_body_atr",
+        "cascade_vol_spike",
+        "cascade_lower_wick",
+        "cascade_active",
+        "cascade_exhaustion",
     ]
     return cols
 

@@ -21,7 +21,6 @@ Configure:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
@@ -43,11 +42,15 @@ class RemoteLogHandler(logging.Handler):
     background flusher thread handles the time-based flush.
     """
 
-    def __init__(self, url: str, *,
-                 batch_size: int = 20,
-                 flush_interval: float = 5.0,
-                 timeout: float = 4.0,
-                 level: int = logging.WARNING) -> None:
+    def __init__(
+        self,
+        url: str,
+        *,
+        batch_size: int = 20,
+        flush_interval: float = 5.0,
+        timeout: float = 4.0,
+        level: int = logging.WARNING,
+    ) -> None:
         super().__init__(level=level)
         if not url:
             raise ValueError("remote log url is required")
@@ -59,8 +62,8 @@ class RemoteLogHandler(logging.Handler):
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = threading.Thread(
-            target=self._flush_loop, name="daytrade-remote-log",
-            daemon=True)
+            target=self._flush_loop, name="daytrade-remote-log", daemon=True
+        )
         self._thread.start()
 
     # logging.Handler API ---------------------------------------------------
@@ -98,8 +101,7 @@ class RemoteLogHandler(logging.Handler):
         try:
             httpx.post(self.url, json={"records": batch}, timeout=self.timeout)
         except Exception as exc:  # noqa: BLE001
-            _log.debug("remote log flush failed (%d records): %s",
-                       len(batch), exc)
+            _log.debug("remote log flush failed (%d records): %s", len(batch), exc)
 
     def _flush_loop(self) -> None:
         while not self._stop.is_set():
@@ -107,10 +109,12 @@ class RemoteLogHandler(logging.Handler):
             self._flush()
 
 
-def attach_rotating_file_handler(path: Path | str, *,
-                                  keep_days: int = 14,
-                                  level: int = logging.INFO,
-                                  ) -> None:
+def attach_rotating_file_handler(
+    path: Path | str,
+    *,
+    keep_days: int = 14,
+    level: int = logging.INFO,
+) -> None:
     """Attach a daily-rotating file handler to the root logger.
 
     Idempotent: a duplicate attachment for the same path is a no-op.
@@ -120,15 +124,21 @@ def attach_rotating_file_handler(path: Path | str, *,
     root = logging.getLogger()
     abspath = str(path.resolve())
     for handler in root.handlers:
-        if isinstance(handler, TimedRotatingFileHandler) and \
-                getattr(handler, "baseFilename", None) == abspath:
+        if (
+            isinstance(handler, TimedRotatingFileHandler)
+            and getattr(handler, "baseFilename", None) == abspath
+        ):
             return
     handler = TimedRotatingFileHandler(
-        filename=abspath, when="midnight", interval=1,
-        backupCount=keep_days, encoding="utf-8", utc=True)
+        filename=abspath,
+        when="midnight",
+        interval=1,
+        backupCount=keep_days,
+        encoding="utf-8",
+        utc=True,
+    )
     handler.setLevel(level)
-    handler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     root.addHandler(handler)
 
 

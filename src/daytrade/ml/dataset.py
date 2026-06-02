@@ -32,7 +32,7 @@ class Dataset:
         return len(self.X)
 
     @property
-    def class_balance(self) -> "dict[int, int]":
+    def class_balance(self) -> dict[int, int]:
         return {int(k): int(v) for k, v in self.y.value_counts().items()}
 
 

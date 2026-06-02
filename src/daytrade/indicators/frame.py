@@ -23,13 +23,18 @@ def ohlcv_to_frame(candles: List[OHLCV]) -> pd.DataFrame:
     so downstream rolling windows are guaranteed causal and monotonic.
     """
     if not candles:
-        return pd.DataFrame(columns=OHLCV_COLUMNS,
-                            index=pd.DatetimeIndex([], name="timestamp"))
-    rows = [{
-        "timestamp": c.timestamp,
-        "open": c.open, "high": c.high, "low": c.low,
-        "close": c.close, "volume": c.volume,
-    } for c in candles]
+        return pd.DataFrame(columns=OHLCV_COLUMNS, index=pd.DatetimeIndex([], name="timestamp"))
+    rows = [
+        {
+            "timestamp": c.timestamp,
+            "open": c.open,
+            "high": c.high,
+            "low": c.low,
+            "close": c.close,
+            "volume": c.volume,
+        }
+        for c in candles
+    ]
     frame = pd.DataFrame(rows).set_index("timestamp")
     frame = frame[~frame.index.duplicated(keep="last")].sort_index()
     return frame[OHLCV_COLUMNS]

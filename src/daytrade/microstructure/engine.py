@@ -17,10 +17,10 @@ from ..config.schema import MicrostructureConfig
 from ..indicators import core
 from ..indicators.frame import ohlcv_to_frame
 from ..models import (
+    OHLCV,
     Bias,
     MarketRegime,
     MicrostructureSignal,
-    OHLCV,
     OrderBookSnapshot,
 )
 from ..models.market import OrderBookLevel
@@ -53,10 +53,7 @@ def find_walls(levels: List[OrderBookLevel], wall_multiple: float) -> List[float
     mean = float(sizes.mean())
     if mean <= 0:
         return []
-    return [
-        levels[i].price for i in range(len(levels))
-        if sizes[i] >= wall_multiple * mean
-    ]
+    return [levels[i].price for i in range(len(levels)) if sizes[i] >= wall_multiple * mean]
 
 
 class MicrostructureEngine:
@@ -78,9 +75,7 @@ class MicrostructureEngine:
         imbalance = depth_imbalance(book, levels)
         if abs(imbalance) >= cfg.imbalance_strong:
             side = "buyers" if imbalance > 0 else "sellers"
-            reasoning.append(
-                f"Strong depth imbalance: {abs(imbalance) * 100:.0f}% toward {side}"
-            )
+            reasoning.append(f"Strong depth imbalance: {abs(imbalance) * 100:.0f}% toward {side}")
         else:
             reasoning.append(f"Depth imbalance {imbalance * 100:+.0f}% (mild)")
 
@@ -92,13 +87,10 @@ class MicrostructureEngine:
             reasoning.append(f"Spread {spread_bps:.1f} bps ({tag})")
 
         # --- Thin liquidity ---
-        notional = (book.notional_depth("bid", levels)
-                    + book.notional_depth("ask", levels))
+        notional = book.notional_depth("bid", levels) + book.notional_depth("ask", levels)
         thin = notional < cfg.thin_liquidity_notional
         if thin:
-            reasoning.append(
-                f"Thin liquidity: {notional:,.0f} notional in top {levels} levels"
-            )
+            reasoning.append(f"Thin liquidity: {notional:,.0f} notional in top {levels} levels")
 
         # --- Liquidity walls -> support / resistance ---
         bid_walls = find_walls(book.bids[:levels], cfg.wall_multiple)
@@ -156,9 +148,7 @@ class MicrostructureEngine:
             liquidity_interpretation=interpretation,
         )
 
-    def _regime(
-        self, candles: Optional[List[OHLCV]]
-    ) -> "tuple[MarketRegime, bool]":
+    def _regime(self, candles: Optional[List[OHLCV]]) -> tuple[MarketRegime, bool]:
         """Classify the market regime and whether it is a chop zone."""
         if not candles or len(candles) < 30:
             return MarketRegime.RANGE, False

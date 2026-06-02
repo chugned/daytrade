@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import logging
-import os
 from unittest.mock import patch
-
-import pytest
 
 from daytrade.ops.notify import (
     Level,
@@ -54,7 +51,7 @@ def test_telegram_send_does_an_http_call_to_the_bot_api():
     with patch("daytrade.ops.notify.httpx.post") as post:
         notifier.notify("Trade opened", "BTC qty 0.05", Level.INFO)
     assert post.called
-    url, = post.call_args.args
+    (url,) = post.call_args.args
     assert "api.telegram.org/botabc/sendMessage" in url
     payload = post.call_args.kwargs["json"]
     assert payload["chat_id"] == "789"
@@ -66,7 +63,7 @@ def test_ntfy_send_posts_to_topic_url():
     with patch("daytrade.ops.notify.httpx.post") as post:
         notifier.notify("Hi", "world", Level.WARN)
     assert post.called
-    url, = post.call_args.args
+    (url,) = post.call_args.args
     assert url.endswith("/t")
     assert post.call_args.kwargs["headers"]["Title"] == "Hi"
     assert post.call_args.kwargs["headers"]["Priority"] == "high"

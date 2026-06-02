@@ -23,11 +23,15 @@ class _SignalBase(DaytradeModel):
     timestamp: datetime
     bias: Bias = Bias.NEUTRAL
     score: float = Field(
-        default=0.0, ge=-1.0, le=1.0,
+        default=0.0,
+        ge=-1.0,
+        le=1.0,
         description="Directional strength: -1 fully bearish .. +1 fully bullish.",
     )
     confidence: float = Field(
-        default=0.0, ge=0.0, le=1.0,
+        default=0.0,
+        ge=0.0,
+        le=1.0,
         description="How much trust to place in this signal.",
     )
     reasoning: List[str] = Field(
@@ -63,7 +67,9 @@ class MicrostructureSignal(_SignalBase):
     """Output of the orderbook / microstructure analysis layer."""
 
     imbalance: float = Field(
-        default=0.0, ge=-1.0, le=1.0,
+        default=0.0,
+        ge=-1.0,
+        le=1.0,
         description="(bid-ask depth) / (bid+ask depth): + means buy pressure.",
     )
     spread_bps: float | None = Field(default=None, ge=0)

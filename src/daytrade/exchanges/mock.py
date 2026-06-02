@@ -57,15 +57,17 @@ def generate_random_walk(
         low = min(open_, close) - wick
         low = max(low, 1e-9)
         volume = float(abs(rng.normal(1000.0, 250.0)))
-        candles.append(OHLCV(
-            symbol=symbol,
-            timestamp=start_time + _BAR * i,
-            open=round(open_, 2),
-            high=round(high, 2),
-            low=round(low, 2),
-            close=round(close, 2),
-            volume=round(volume, 4),
-        ))
+        candles.append(
+            OHLCV(
+                symbol=symbol,
+                timestamp=start_time + _BAR * i,
+                open=round(open_, 2),
+                high=round(high, 2),
+                low=round(low, 2),
+                close=round(close, 2),
+                volume=round(volume, 4),
+            )
+        )
         prev_close = close
     return candles
 
@@ -118,14 +120,15 @@ def build_orderbook(
         ask_price = mid_price + half_spread + tick * i
         bid_qty = max(base_quantity * decay * bid_mult * jitter_b, 1e-6)
         ask_qty = max(base_quantity * decay * ask_mult * jitter_a, 1e-6)
-        bids.append(OrderBookLevel(price=round(bid_price, price_dp),
-                                   quantity=round(bid_qty, 6)))
-        asks.append(OrderBookLevel(price=round(ask_price, price_dp),
-                                   quantity=round(ask_qty, 6)))
+        bids.append(OrderBookLevel(price=round(bid_price, price_dp), quantity=round(bid_qty, 6)))
+        asks.append(OrderBookLevel(price=round(ask_price, price_dp), quantity=round(ask_qty, 6)))
 
     return OrderBookSnapshot(
-        symbol=symbol, exchange=exchange, timestamp=timestamp,
-        bids=bids, asks=asks,
+        symbol=symbol,
+        exchange=exchange,
+        timestamp=timestamp,
+        bids=bids,
+        asks=asks,
     )
 
 

@@ -43,7 +43,7 @@ class MeanReversionSetup:
     entry: float
     stop: float
     target: float
-    confidence: float       # 0..1, scales with how extreme the drop was
+    confidence: float  # 0..1, scales with how extreme the drop was
     reason: str
     drop_pct: float
     rsi: float
@@ -55,8 +55,8 @@ class MeanReversionConfig:
     """Tunable thresholds for the detector — sweep-validated before use."""
 
     # The drop the setup requires over the last `drop_lookback` bars.
-    drop_pct: float = 0.008           # 0.8%
-    drop_lookback: int = 15           # bars (minutes)
+    drop_pct: float = 0.008  # 0.8%
+    drop_lookback: int = 15  # bars (minutes)
 
     # RSI gate.
     rsi_period: int = 14
@@ -67,9 +67,9 @@ class MeanReversionConfig:
     volume_window: int = 20
 
     # Stop / target geometry (in fractions of current price).
-    stop_buffer_frac: float = 0.002   # 0.2% below recent local low
+    stop_buffer_frac: float = 0.002  # 0.2% below recent local low
     stop_lookback: int = 10
-    target_lookback: int = 15         # midpoint to the recent high
+    target_lookback: int = 15  # midpoint to the recent high
 
     # How short the position is held (in bars / minutes).
     max_hold_bars: int = 30
@@ -79,7 +79,7 @@ def _rsi(closes: np.ndarray, period: int = 14) -> float:
     """Simple RSI on a 1-D array. Returns NaN if not enough data."""
     if len(closes) < period + 1:
         return float("nan")
-    diffs = np.diff(closes[-(period + 1):])
+    diffs = np.diff(closes[-(period + 1) :])
     gains = np.where(diffs > 0, diffs, 0.0).mean()
     losses = np.where(diffs < 0, -diffs, 0.0).mean()
     if losses == 0:
@@ -97,8 +97,16 @@ def detect_mean_reversion_setup(
     Returns ``None`` if any of the three conditions are not met.
     """
     cfg = cfg or MeanReversionConfig()
-    need = max(cfg.drop_lookback, cfg.volume_window, cfg.rsi_period + 1,
-               cfg.target_lookback, cfg.stop_lookback) + 1
+    need = (
+        max(
+            cfg.drop_lookback,
+            cfg.volume_window,
+            cfg.rsi_period + 1,
+            cfg.target_lookback,
+            cfg.stop_lookback,
+        )
+        + 1
+    )
     if len(candles) < need:
         return None
 
@@ -119,7 +127,7 @@ def detect_mean_reversion_setup(
     if not np.isfinite(rsi) or rsi > cfg.rsi_max:
         return None  # not oversold
 
-    avg_vol = vols[-cfg.volume_window - 1: -1].mean()
+    avg_vol = vols[-cfg.volume_window - 1 : -1].mean()
     if avg_vol <= 0:
         return None
     vol_ratio = vols[-1] / avg_vol
@@ -128,17 +136,24 @@ def detect_mean_reversion_setup(
 
     # Setup confirmed — build entry / stop / target.
     entry = last
-    local_low = lows[-cfg.stop_lookback:].min()
+    local_low = lows[-cfg.stop_lookback :].min()
     stop = local_low * (1.0 - cfg.stop_buffer_frac)
-    target_level = highs[-cfg.target_lookback:].max()
+    target_level = highs[-cfg.target_lookback :].max()
     target = (entry + target_level) / 2.0
 
     # Confidence scales with the drop magnitude vs the threshold.
     confidence = float(min(1.0, abs(drop_pct) / (cfg.drop_pct * 2.0)))
 
     return MeanReversionSetup(
-        entry=entry, stop=stop, target=target, confidence=confidence,
-        reason=(f"oversold reversal: {drop_pct*100:+.2f}% in {cfg.drop_lookback}m, "
-                f"RSI {rsi:.1f}, vol x{vol_ratio:.2f}"),
-        drop_pct=drop_pct, rsi=rsi, volume_ratio=vol_ratio,
+        entry=entry,
+        stop=stop,
+        target=target,
+        confidence=confidence,
+        reason=(
+            f"oversold reversal: {drop_pct*100:+.2f}% in {cfg.drop_lookback}m, "
+            f"RSI {rsi:.1f}, vol x{vol_ratio:.2f}"
+        ),
+        drop_pct=drop_pct,
+        rsi=rsi,
+        volume_ratio=vol_ratio,
     )

@@ -9,7 +9,6 @@ wherever the future is unknown.
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from daytrade.features import FeaturePipeline
@@ -32,8 +31,7 @@ def test_macd_no_lookahead(uptrend_candles):
     frame = ohlcv_to_frame(uptrend_candles)
     full = core.macd(frame["close"])
     partial = core.macd(frame["close"].iloc[:200])
-    assert np.allclose(full["macd"].iloc[:200].dropna(),
-                       partial["macd"].dropna())
+    assert np.allclose(full["macd"].iloc[:200].dropna(), partial["macd"].dropna())
 
 
 def test_trend_slope_no_lookahead(uptrend_candles):
@@ -46,8 +44,9 @@ def test_trend_slope_no_lookahead(uptrend_candles):
 def test_atr_no_lookahead(uptrend_candles):
     frame = ohlcv_to_frame(uptrend_candles)
     full = core.atr(frame["high"], frame["low"], frame["close"], 14)
-    partial = core.atr(frame["high"].iloc[:200], frame["low"].iloc[:200],
-                       frame["close"].iloc[:200], 14)
+    partial = core.atr(
+        frame["high"].iloc[:200], frame["low"].iloc[:200], frame["close"].iloc[:200], 14
+    )
     assert np.allclose(full.iloc[:200].dropna(), partial.dropna())
 
 

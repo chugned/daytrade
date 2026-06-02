@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .loader import ConfigError, DEFAULT_CONFIG_DIR, load_config, load_config_dict
+from .loader import DEFAULT_CONFIG_DIR, ConfigError, load_config, load_config_dict
 from .schema import (
     AppConfig,
     ApprovalConfig,

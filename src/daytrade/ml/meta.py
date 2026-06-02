@@ -40,7 +40,7 @@ _FORMAT_VERSION = 1
 _MIN_TRAIN_ROWS = 60
 
 
-def barrier_distances(frame, config: AppConfig) -> "tuple":
+def barrier_distances(frame, config: AppConfig) -> tuple:
     """Per-bar (stop, target) price distances, matching the fusion geometry.
 
     Uses the same volatility unit the live engine uses: a 14-bar ATR clipped
@@ -49,8 +49,9 @@ def barrier_distances(frame, config: AppConfig) -> "tuple":
     """
     close = frame["close"]
     atr = core.atr(frame["high"], frame["low"], frame["close"], 14)
-    frac = (atr / close).clip(lower=config.fusion.min_volatility_fraction,
-                              upper=config.fusion.max_volatility_fraction)
+    frac = (atr / close).clip(
+        lower=config.fusion.min_volatility_fraction, upper=config.fusion.max_volatility_fraction
+    )
     frac = frac.fillna(config.fusion.min_volatility_fraction)
     unit = close * frac
     return unit * config.fusion.stop_vol_mult, unit * config.fusion.target_vol_mult
@@ -61,7 +62,7 @@ class MetaTrainResult:
     """Metrics from a :meth:`MetaLabelModel.train` call."""
 
     samples: int
-    base_win_rate: float   # fraction of training trades that won
+    base_win_rate: float  # fraction of training trades that won
     train_accuracy: float
 
 
@@ -87,13 +88,11 @@ class MetaLabelModel:
         pipe = FeaturePipeline(config.features, config.indicators)
         feats = pipe.transform_frame(frame)
         stop_d, target_d = barrier_distances(frame, config)
-        labels = triple_barrier_label(frame, stop_d, target_d,
-                                      max(1, config.risk.max_hold_bars))
+        labels = triple_barrier_label(frame, stop_d, target_d, max(1, config.risk.max_hold_bars))
         joined = feats.join(labels, how="inner").dropna()
         return joined, list(pipe.columns)
 
-    def train(self, candle_sets: List[List[OHLCV]],
-              config: AppConfig) -> Optional[MetaTrainResult]:
+    def train(self, candle_sets: List[List[OHLCV]], config: AppConfig) -> Optional[MetaTrainResult]:
         """Train on one or more candle series pooled together.
 
         Returns None when there is too little resolvable history, or when
@@ -118,27 +117,35 @@ class MetaLabelModel:
         if len(np.unique(y)) < 2:
             return None
 
-        pipeline = Pipeline([
-            ("scaler", StandardScaler()),
-            ("clf", GradientBoostingClassifier(
-                n_estimators=120, max_depth=3, learning_rate=0.05,
-                random_state=self.seed)),
-        ])
+        pipeline = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "clf",
+                    GradientBoostingClassifier(
+                        n_estimators=120, max_depth=3, learning_rate=0.05, random_state=self.seed
+                    ),
+                ),
+            ]
+        )
         pipeline.fit(X, y)
         self._pipeline = pipeline
         self.feature_names = cols
         self.n_samples = len(data)
         self.base_win_rate = float(y.mean())
         acc = float((pipeline.predict(X) == y).mean())
-        result = MetaTrainResult(samples=len(data),
-                                 base_win_rate=self.base_win_rate,
-                                 train_accuracy=acc)
-        _log.info("meta-model trained: samples=%d base_win=%.3f acc=%.3f",
-                  result.samples, result.base_win_rate, result.train_accuracy)
+        result = MetaTrainResult(
+            samples=len(data), base_win_rate=self.base_win_rate, train_accuracy=acc
+        )
+        _log.info(
+            "meta-model trained: samples=%d base_win=%.3f acc=%.3f",
+            result.samples,
+            result.base_win_rate,
+            result.train_accuracy,
+        )
         return result
 
-    def predict_win_proba(self, candles: List[OHLCV],
-                          config: AppConfig) -> Optional[float]:
+    def predict_win_proba(self, candles: List[OHLCV], config: AppConfig) -> Optional[float]:
         """P(a long entered on the latest bar hits target before stop).
 
         Returns None when the model is untrained or features are unavailable
@@ -163,15 +170,21 @@ class MetaLabelModel:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("wb") as fh:
-            pickle.dump({"format_version": _FORMAT_VERSION, "seed": self.seed,
-                         "feature_names": self.feature_names,
-                         "n_samples": self.n_samples,
-                         "base_win_rate": self.base_win_rate,
-                         "pipeline": self._pipeline}, fh)
+            pickle.dump(
+                {
+                    "format_version": _FORMAT_VERSION,
+                    "seed": self.seed,
+                    "feature_names": self.feature_names,
+                    "n_samples": self.n_samples,
+                    "base_win_rate": self.base_win_rate,
+                    "pipeline": self._pipeline,
+                },
+                fh,
+            )
         return path
 
     @classmethod
-    def load(cls, path: Path | str) -> "MetaLabelModel":
+    def load(cls, path: Path | str) -> MetaLabelModel:
         with Path(path).open("rb") as fh:
             payload = pickle.load(fh)
         if payload.get("format_version") != _FORMAT_VERSION:
@@ -187,4 +200,5 @@ class MetaLabelModel:
 def _concat(frames):
     """Row-concatenate training frames (kept local to avoid a top-level dep)."""
     import pandas as pd
+
     return pd.concat(frames, axis=0, ignore_index=True)

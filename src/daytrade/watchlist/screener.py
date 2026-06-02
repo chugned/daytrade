@@ -17,7 +17,7 @@ Five filters, all configured in ``WatchlistConfig``:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from ..config.schema import WatchlistConfig
 from ..models import OHLCV, OrderBookSnapshot, PriceTick
@@ -60,10 +60,10 @@ def extract_metrics(
 ) -> AssetMetrics:
     """Derive screening metrics from raw market data."""
     spread_bps = orderbook.spread_bps if orderbook.spread_bps is not None else 0.0
-    book_notional = (orderbook.notional_depth("bid")
-                     + orderbook.notional_depth("ask"))
-    populated = len([lvl for lvl in orderbook.bids if lvl.quantity > 0]) \
-        + len([lvl for lvl in orderbook.asks if lvl.quantity > 0])
+    book_notional = orderbook.notional_depth("bid") + orderbook.notional_depth("ask")
+    populated = len([lvl for lvl in orderbook.bids if lvl.quantity > 0]) + len(
+        [lvl for lvl in orderbook.asks if lvl.quantity > 0]
+    )
 
     # 1h move from 1-minute candles (or the longest window available).
     move_1h = 0.0
@@ -104,9 +104,7 @@ def screen_asset(metrics: AssetMetrics, config: WatchlistConfig) -> AssetScreeni
             f"< ${config.min_orderbook_notional_usd:,.0f} minimum"
         )
     if metrics.populated_levels < _MIN_POPULATED_LEVELS:
-        rejections.append(
-            f"thin orderbook: only {metrics.populated_levels} populated levels"
-        )
+        rejections.append(f"thin orderbook: only {metrics.populated_levels} populated levels")
     if abs(metrics.move_1h_pct) > config.pump_dump_max_1h_move_pct:
         direction = "pump" if metrics.move_1h_pct > 0 else "dump"
         rejections.append(

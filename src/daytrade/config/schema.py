@@ -53,18 +53,18 @@ class SafetyConfig(_Section):
     live_acknowledgement: str = Field(
         default="",
         description="The operator's explicit acknowledgement phrase. Must "
-                    "match LIVE_ACKNOWLEDGEMENT_PHRASE exactly for live "
-                    "trading to be allowed. Empty by default; do not "
-                    "store this in version control.",
+        "match LIVE_ACKNOWLEDGEMENT_PHRASE exactly for live "
+        "trading to be allowed. Empty by default; do not "
+        "store this in version control.",
     )
 
     @model_validator(mode="after")
-    def _enforce_paper_only(self) -> "SafetyConfig":
+    def _enforce_paper_only(self) -> SafetyConfig:
         # Aligned-but-no-acknowledgement is the most likely accidental
         # path; check it first and refuse with a clear message.
-        any_live_flag = (self.live_trading_enabled
-                         or self.allow_real_orders
-                         or not self.paper_trading)
+        any_live_flag = (
+            self.live_trading_enabled or self.allow_real_orders or not self.paper_trading
+        )
         ack_correct = self.live_acknowledgement == LIVE_ACKNOWLEDGEMENT_PHRASE
         if any_live_flag and not ack_correct:
             raise ValueError(
@@ -86,8 +86,9 @@ class SafetyConfig(_Section):
         if any_live_flag and ack_correct:
             # All three flags aligned AND acknowledgement matches.
             # Validate each flag is in the correct combination.
-            if not (self.live_trading_enabled and self.allow_real_orders
-                    and not self.paper_trading):
+            if not (
+                self.live_trading_enabled and self.allow_real_orders and not self.paper_trading
+            ):
                 raise ValueError(
                     "Live-trading flags must be set CONSISTENTLY: "
                     "live_trading_enabled=true, allow_real_orders=true, "
@@ -99,10 +100,12 @@ class SafetyConfig(_Section):
     def is_live(self) -> bool:
         """True iff every safety gate at this layer is open for live
         trading. Code that places real orders MUST check this."""
-        return (self.live_trading_enabled
-                and self.allow_real_orders
-                and not self.paper_trading
-                and self.live_acknowledgement == LIVE_ACKNOWLEDGEMENT_PHRASE)
+        return (
+            self.live_trading_enabled
+            and self.allow_real_orders
+            and not self.paper_trading
+            and self.live_acknowledgement == LIVE_ACKNOWLEDGEMENT_PHRASE
+        )
 
 
 class RuntimeConfig(_Section):
@@ -111,10 +114,11 @@ class RuntimeConfig(_Section):
     random_seed: int = 42
     allow_network: bool = False
     max_data_age_seconds: int = Field(
-        default=300, ge=60,
+        default=300,
+        ge=60,
         description="Skip a symbol's decision this cycle if its most recent "
-                    "candle is older than this many seconds — a staleness "
-                    "guard so the bot never acts on a stale feed.",
+        "candle is older than this many seconds — a staleness "
+        "guard so the bot never acts on a stale feed.",
     )
 
     @field_validator("log_level")
@@ -136,11 +140,13 @@ class ExchangeConfig(_Section):
 class ConsensusConfig(_Section):
     min_sources: int = Field(default=1, ge=1)
     outlier_z_threshold: float = Field(
-        default=3.0, gt=0,
+        default=3.0,
+        gt=0,
         description="Source prices beyond this many MADs from the median are dropped.",
     )
     max_dispersion: float = Field(
-        default=0.05, gt=0,
+        default=0.05,
+        gt=0,
         description="If accepted-source dispersion exceeds this, mark degraded.",
     )
 
@@ -155,7 +161,7 @@ class IndicatorConfig(_Section):
     trend_window: int = Field(default=20, ge=2)
 
     @model_validator(mode="after")
-    def _fast_slow(self) -> "IndicatorConfig":
+    def _fast_slow(self) -> IndicatorConfig:
         if self.ema_fast >= self.ema_slow:
             raise ValueError("ema_fast must be < ema_slow")
         return self
@@ -167,7 +173,8 @@ class MicrostructureConfig(_Section):
     wide_spread_bps: float = Field(default=5.0, gt=0)
     thin_liquidity_notional: float = Field(default=50_000.0, gt=0)
     wall_multiple: float = Field(
-        default=3.0, gt=1,
+        default=3.0,
+        gt=1,
         description="A level this many times the average size is a 'wall'.",
     )
     # Chop-zone detection. A market is a "chop zone" (kill switch -> HOLD) when
@@ -177,12 +184,14 @@ class MicrostructureConfig(_Section):
     # was above the largest real slope, so every symbol was always "chop" and
     # the bot never traded.
     chop_max_trend_slope: float = Field(
-        default=0.00015, gt=0,
+        default=0.00015,
+        gt=0,
         description="Abs trailing slope (fractional move per bar) below which "
-                    "the market is a directionless chop zone.",
+        "the market is a directionless chop zone.",
     )
     chop_high_volatility: float = Field(
-        default=0.012, gt=0,
+        default=0.012,
+        gt=0,
         description="Per-bar return std above which volatility is 'high'.",
     )
 
@@ -196,7 +205,8 @@ class FeatureConfig(_Section):
 class LabelConfig(_Section):
     horizon: int = Field(default=5, ge=1, description="Bars ahead for the label.")
     breakout_threshold: float = Field(
-        default=0.004, gt=0,
+        default=0.004,
+        gt=0,
         description="Forward return magnitude that counts as a directional move.",
     )
 
@@ -214,11 +224,14 @@ class WalkForwardConfig(_Section):
     train_window: int = Field(default=400, ge=50)
     test_window: int = Field(default=100, ge=20)
     overfit_gap_warn: float = Field(
-        default=0.15, gt=0,
+        default=0.15,
+        gt=0,
         description="train-test accuracy gap above this flags overfitting.",
     )
     suspicious_accuracy: float = Field(
-        default=0.85, gt=0.5, le=1.0,
+        default=0.85,
+        gt=0.5,
+        le=1.0,
         description="Test accuracy above this flags likely leakage.",
     )
 
@@ -243,7 +256,7 @@ class FusionWeights(_Section):
     ml: float = Field(default=0.20, ge=0)
 
     @model_validator(mode="after")
-    def _positive_sum(self) -> "FusionWeights":
+    def _positive_sum(self) -> FusionWeights:
         if self.technical + self.microstructure + self.macro + self.ml <= 0:
             raise ValueError("fusion weights must sum to a positive number")
         return self
@@ -252,17 +265,22 @@ class FusionWeights(_Section):
 class FusionConfig(_Section):
     weights: FusionWeights = Field(default_factory=FusionWeights)
     action_threshold: float = Field(
-        default=0.15, gt=0, lt=1,
+        default=0.15,
+        gt=0,
+        lt=1,
         description="Abs fused score required to act (else HOLD).",
     )
     min_confidence: float = Field(
-        default=0.35, ge=0, le=1,
+        default=0.35,
+        ge=0,
+        le=1,
         description="Confidence below this downgrades the action to HOLD.",
     )
     # Entry/stop/target are placed in units of a volatility unit U, where
     # U = reference_price * clip(ATR/price, min_vol_fraction, max_vol_fraction).
     entry_offset_vol_mult: float = Field(
-        default=1.0, ge=0,
+        default=1.0,
+        ge=0,
         description="Entry is offset this many volatility units toward a better fill.",
     )
     # Stop/target widths calibrated by a backtest sweep over real history
@@ -270,23 +288,27 @@ class FusionConfig(_Section):
     # outside routine noise; a 3.0x target gives a 1.5:1 reward:risk — the
     # sweep's best combination on out-of-sample data (best return, 58% win
     # rate vs the old 1.0x/5.0x stop's fragile 33%).
-    stop_vol_mult: float = Field(default=2.0, gt=0,
-                                 description="Stop distance from entry, in vol units.")
-    target_vol_mult: float = Field(default=3.0, gt=0,
-                                   description="Target distance from entry, in vol units.")
+    stop_vol_mult: float = Field(
+        default=2.0, gt=0, description="Stop distance from entry, in vol units."
+    )
+    target_vol_mult: float = Field(
+        default=3.0, gt=0, description="Target distance from entry, in vol units."
+    )
     min_volatility_fraction: float = Field(
-        default=0.004, gt=0,
+        default=0.004,
+        gt=0,
         description="Volatility-unit floor as a fraction of price — keeps stops "
-                    "from being placed unrealistically tight in calm markets. "
-                    "Raised to 0.004 so the stop clears 1-minute market noise.",
+        "from being placed unrealistically tight in calm markets. "
+        "Raised to 0.004 so the stop clears 1-minute market noise.",
     )
     max_volatility_fraction: float = Field(
-        default=0.05, gt=0,
+        default=0.05,
+        gt=0,
         description="Volatility-unit cap as a fraction of price.",
     )
 
     @model_validator(mode="after")
-    def _vol_bounds(self) -> "FusionConfig":
+    def _vol_bounds(self) -> FusionConfig:
         if self.min_volatility_fraction >= self.max_volatility_fraction:
             raise ValueError("min_volatility_fraction must be < max_volatility_fraction")
         return self
@@ -306,44 +328,55 @@ class RiskConfig(_Section):
     fee_bps: float = Field(default=10.0, ge=0, description="Per-side fee, bps.")
     base_slippage_bps: float = Field(default=2.0, ge=0)
     impact_slippage_bps: float = Field(
-        default=8.0, ge=0,
+        default=8.0,
+        ge=0,
         description="Extra slippage scaled by order size vs available liquidity.",
     )
     latency_ms: float = Field(default=250.0, ge=0)
     risk_per_trade: float = Field(
-        default=0.01, gt=0, le=0.25,
+        default=0.01,
+        gt=0,
+        le=0.25,
         description="Fraction of equity risked between entry and stop.",
     )
     max_position_pct: float = Field(
-        default=0.25, gt=0, le=1.0,
-        description="Max notional of a single per-coin position, as a fraction "
-                    "of equity.",
+        default=0.25,
+        gt=0,
+        le=1.0,
+        description="Max notional of a single per-coin position, as a fraction " "of equity.",
     )
     max_daily_loss_pct: float = Field(default=0.05, gt=0, le=1.0)
     max_weekly_loss_pct: float = Field(
-        default=0.12, gt=0, le=1.0,
+        default=0.12,
+        gt=0,
+        le=1.0,
         description="Rolling 7-day loss limit; blocks new entries once hit.",
     )
     max_open_positions: int = Field(
-        default=3, ge=1,
+        default=3,
+        ge=1,
         description="Maximum number of simultaneously open positions.",
     )
     loss_cooldown_bars: int = Field(
-        default=20, ge=0,
+        default=20,
+        ge=0,
         description="Bars to wait after a losing trade before a new entry.",
     )
     max_hold_bars: int = Field(
-        default=48, ge=0,
+        default=48,
+        ge=0,
         description="Triple-barrier vertical: force-close a position after this "
-                    "many bars even if neither stop nor target was hit. 0 disables.",
+        "many bars even if neither stop nor target was hit. 0 disables.",
     )
     partial_fill_liquidity_frac: float = Field(
-        default=0.25, gt=0, le=1.0,
+        default=0.25,
+        gt=0,
+        le=1.0,
         description="Max fraction of top-of-book liquidity one order may consume.",
     )
 
     @model_validator(mode="after")
-    def _loss_limits_ordered(self) -> "RiskConfig":
+    def _loss_limits_ordered(self) -> RiskConfig:
         if self.max_weekly_loss_pct < self.max_daily_loss_pct:
             raise ValueError("max_weekly_loss_pct must be >= max_daily_loss_pct")
         return self
@@ -357,7 +390,8 @@ class PaperConfig(_Section):
 class BacktestConfig(_Section):
     warmup_bars: int = Field(default=50, ge=0)
     sharpe_warn_threshold: float = Field(
-        default=4.0, gt=0,
+        default=4.0,
+        gt=0,
         description="A backtest Sharpe-like ratio above this is flagged unrealistic.",
     )
 
@@ -370,21 +404,25 @@ class WatchlistConfig(_Section):
         description="Tradeable universe — extend with configurable altcoins.",
     )
     min_24h_volume_usd: float = Field(
-        default=50_000_000.0, gt=0,
+        default=50_000_000.0,
+        gt=0,
         description="Reject assets thinner than this in 24h quote volume.",
     )
     max_spread_bps: float = Field(
-        default=8.0, gt=0,
+        default=8.0,
+        gt=0,
         description="Reject assets whose top-of-book spread exceeds this.",
     )
     min_orderbook_notional_usd: float = Field(
-        default=200_000.0, gt=0,
+        default=200_000.0,
+        gt=0,
         description="Reject assets with less than this notional in the book.",
     )
     pump_dump_max_1h_move_pct: float = Field(
-        default=0.25, gt=0,
+        default=0.25,
+        gt=0,
         description="Reject assets that moved more than this in the last hour "
-                    "(suspected pump-and-dump).",
+        "(suspected pump-and-dump).",
     )
 
     @field_validator("symbols")
@@ -443,12 +481,11 @@ class SandboxConfig(_Section):
         return v
 
     @model_validator(mode="after")
-    def _enforce_sandbox_safety(self) -> "SandboxConfig":
+    def _enforce_sandbox_safety(self) -> SandboxConfig:
         # These guards cannot be turned off — withdrawal access is never allowed.
         if not self.reject_withdrawal_keys:
             raise ValueError(
-                "reject_withdrawal_keys must be true — withdrawal access is "
-                "never permitted."
+                "reject_withdrawal_keys must be true — withdrawal access is " "never permitted."
             )
         return self
 
@@ -461,64 +498,74 @@ class GatingConfig(_Section):
     """
 
     min_regime_accuracy: float = Field(
-        default=0.50, ge=0.0, le=1.0,
+        default=0.50,
+        ge=0.0,
+        le=1.0,
         description="Block new trades in a market regime whose own measured "
-                    "out-of-sample accuracy is below this floor.",
+        "out-of-sample accuracy is below this floor.",
     )
     regime_min_samples: int = Field(
-        default=30, ge=1,
+        default=30,
+        ge=1,
         description="Evaluated predictions a regime needs before the regime "
-                    "gate will judge it; below this the regime is allowed "
-                    "through so it can accumulate evidence.",
+        "gate will judge it; below this the regime is allowed "
+        "through so it can accumulate evidence.",
     )
     min_calibrated_confidence: float = Field(
-        default=0.50, ge=0.0, le=1.0,
+        default=0.50,
+        ge=0.0,
+        le=1.0,
         description="Block trades whose calibrated win probability is below "
-                    "this floor (see daytrade.observatory.calibration).",
+        "this floor (see daytrade.observatory.calibration).",
     )
     meta_label_edge_multiple: float = Field(
-        default=2.0, gt=0.0,
+        default=2.0,
+        gt=0.0,
         description="Take a trade only if the meta-model scores it at least "
-                    "this multiple of its own base win rate. Relative to the "
-                    "base rate (not a fixed probability) so it stays "
-                    "reachable on any timeframe. 2.0 is the sweep-best value "
-                    "on real 1-minute data: ~7x precision lift while still "
-                    "keeping enough trades to learn from.",
+        "this multiple of its own base win rate. Relative to the "
+        "base rate (not a fixed probability) so it stays "
+        "reachable on any timeframe. 2.0 is the sweep-best value "
+        "on real 1-minute data: ~7x precision lift while still "
+        "keeping enough trades to learn from.",
     )
     use_fear_greed_gate: bool = Field(
         default=False,
         description="Block contrarian-unfavourable trades when the Crypto "
-                    "Fear & Greed Index is at an extreme. Disabled by default "
-                    "until validated; enable via config. Paper-only.",
+        "Fear & Greed Index is at an extreme. Disabled by default "
+        "until validated; enable via config. Paper-only.",
     )
     fear_greed_extreme_greed: float = Field(
-        default=80.0, ge=0.0, le=100.0,
+        default=80.0,
+        ge=0.0,
+        le=100.0,
         description="Score >= this (0-100 scale) is 'extreme greed' — "
-                    "the index has historically marked local tops, so when "
-                    "the gate is on we block new longs at this level.",
+        "the index has historically marked local tops, so when "
+        "the gate is on we block new longs at this level.",
     )
     fear_greed_extreme_fear: float = Field(
-        default=20.0, ge=0.0, le=100.0,
+        default=20.0,
+        ge=0.0,
+        le=100.0,
         description="Score <= this is 'extreme fear' — historically near "
-                    "local bottoms, so when the gate is on we block new "
-                    "shorts at this level.",
+        "local bottoms, so when the gate is on we block new "
+        "shorts at this level.",
     )
     use_liquidation_cascade_gate: bool = Field(
         default=False,
         description="Block new long entries when the proxy liquidation-"
-                    "cascade detector is in CASCADE_ACTIVE state. Off by "
-                    "default until sweep-validated on the deployed symbol "
-                    "set. Paper-only.",
+        "cascade detector is in CASCADE_ACTIVE state. Off by "
+        "default until sweep-validated on the deployed symbol "
+        "set. Paper-only.",
     )
     cascade_body_atr_threshold: float = Field(
-        default=2.0, gt=0.0,
-        description="Bar body magnitude (ATR units) required to call a "
-                    "cascade active.",
+        default=2.0,
+        gt=0.0,
+        description="Bar body magnitude (ATR units) required to call a " "cascade active.",
     )
     cascade_volume_spike_ratio: float = Field(
-        default=3.0, gt=0.0,
-        description="Bar volume / trailing mean volume required to call "
-                    "a cascade active.",
+        default=3.0,
+        gt=0.0,
+        description="Bar volume / trailing mean volume required to call " "a cascade active.",
     )
     # Multi-timeframe trend filter — Tier-1 of the 10x research roadmap.
     # Documented ~80% false-signal reduction. Resamples 1m candles to 15m
@@ -528,13 +575,14 @@ class GatingConfig(_Section):
     require_higher_tf_alignment: bool = Field(
         default=False,
         description="If True, block BUYs whose 15m AND 1h trend are not "
-                    "aligned with the 1m signal. Filter ~80% of false "
-                    "1m signals in the literature.",
+        "aligned with the 1m signal. Filter ~80% of false "
+        "1m signals in the literature.",
     )
     higher_tf_min_slope: float = Field(
-        default=0.0, ge=0.0,
+        default=0.0,
+        ge=0.0,
         description="Minimum absolute slope on the higher timeframes to count "
-                    "as an aligned trend. 0.0 = sign-only check.",
+        "as an aligned trend. 0.0 = sign-only check.",
     )
     # Funding-rate sentiment gate — opt-in alternative-data signal.
     # Extreme positive funding = crowded longs = often precedes a pullback;
@@ -544,17 +592,18 @@ class GatingConfig(_Section):
     use_funding_rate_gate: bool = Field(
         default=False,
         description="If True, query Binance perpetual-futures funding rates "
-                    "and block BUYs when funding is extremely positive.",
+        "and block BUYs when funding is extremely positive.",
     )
     funding_extreme_positive: float = Field(
-        default=0.0003, gt=0.0,
-        description="Block BUYs when funding rate exceeds this (as a "
-                    "fraction; 0.0003 = 0.03%).",
+        default=0.0003,
+        gt=0.0,
+        description="Block BUYs when funding rate exceeds this (as a " "fraction; 0.0003 = 0.03%).",
     )
     funding_extreme_negative: float = Field(
-        default=-0.0010, lt=0.0,
+        default=-0.0010,
+        lt=0.0,
         description="At or below this funding rate, explicitly allow the "
-                    "BUY (short-squeeze setup).",
+        "BUY (short-squeeze setup).",
     )
 
 

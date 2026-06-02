@@ -15,15 +15,13 @@ def test_explicit_scenario_risk_on(uptrend_candles):
 
 
 def test_explicit_scenario_exchange_collapse(uptrend_candles):
-    sig = MockMacroAnalyzer().analyze("BTCUSDT", uptrend_candles,
-                                      scenario="exchange_collapse")
+    sig = MockMacroAnalyzer().analyze("BTCUSDT", uptrend_candles, scenario="exchange_collapse")
     assert sig.bias is Bias.BEARISH
     assert sig.risk_level is RiskLevel.EXTREME
 
 
 def test_unknown_scenario_falls_back_to_neutral(uptrend_candles):
-    sig = MockMacroAnalyzer().analyze("BTCUSDT", uptrend_candles,
-                                      scenario="not_a_real_regime")
+    sig = MockMacroAnalyzer().analyze("BTCUSDT", uptrend_candles, scenario="not_a_real_regime")
     assert sig.regime_label == "neutral"
 
 

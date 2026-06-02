@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Protocol
+from typing import Protocol
 
 
 @dataclass(frozen=True)
@@ -110,6 +110,7 @@ class DBPaperBroker:
         # Side is hard-coded to BUY here; sells happen in close_long. The
         # Observer only ever calls open_long for new positions.
         from ..models import Side  # local: avoid import cycle in __init__
+
         trade_id = self._db.insert_paper_trade(
             symbol=symbol,
             side=Side.BUY.value,
@@ -148,7 +149,10 @@ class DBPaperBroker:
             slippage=slippage,
         )
         return ClosedPosition(
-            pnl=pnl, fees=fee, slippage=slippage, fill_price=exit_price,
+            pnl=pnl,
+            fees=fee,
+            slippage=slippage,
+            fill_price=exit_price,
         )
 
 
@@ -176,6 +180,7 @@ class LiveBrokerAdapter:
         timestamp: datetime,
     ) -> OpenedPosition:
         from ..models import Side
+
         fill = self._live.submit_market_order(
             symbol=symbol,
             side=Side.BUY,
@@ -212,6 +217,7 @@ class LiveBrokerAdapter:
         timestamp: datetime,
     ) -> ClosedPosition:
         from ..models import Side
+
         fill = self._live.submit_market_order(
             symbol=symbol,
             side=Side.SELL,
@@ -229,6 +235,8 @@ class LiveBrokerAdapter:
             slippage=fill.slippage,
         )
         return ClosedPosition(
-            pnl=pnl, fees=fill.fee, slippage=fill.slippage,
+            pnl=pnl,
+            fees=fill.fee,
+            slippage=fill.slippage,
             fill_price=fill.price,
         )

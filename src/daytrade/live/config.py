@@ -18,16 +18,16 @@ class LiveConfig(BaseModel):
     dry_run: bool = Field(
         default=True,
         description="If True, the LiveBroker mirrors orders into a Mock "
-                    "exchange and does NOT call the real exchange. Default "
-                    "TRUE; flip to False only after deliberate config "
-                    "override AND SafetyConfig opt-in.",
+        "exchange and does NOT call the real exchange. Default "
+        "TRUE; flip to False only after deliberate config "
+        "override AND SafetyConfig opt-in.",
     )
 
     api_key_env: str = Field(
         default="DAYTRADE_BINANCE_KEY",
         description="Name of the env var holding the API key. The key "
-                    "itself is never persisted to disk by daytrade. Trade-"
-                    "only permission is asserted at startup.",
+        "itself is never persisted to disk by daytrade. Trade-"
+        "only permission is asserted at startup.",
     )
     api_secret_env: str = Field(
         default="DAYTRADE_BINANCE_SECRET",
@@ -36,33 +36,35 @@ class LiveConfig(BaseModel):
 
     exchange: str = Field(
         default="binance",
-        description="Exchange identifier. Currently only 'binance' and "
-                    "'mock' are supported.",
+        description="Exchange identifier. Currently only 'binance' and " "'mock' are supported.",
     )
 
     base_currency: str = Field(default="USDT")
 
     max_stake_per_trade: float = Field(
-        default=25.0, gt=0.0,
+        default=25.0,
+        gt=0.0,
         description="Hard cap on USDT amount per market order. Designed "
-                    "to limit blast radius when first deploying live.",
+        "to limit blast radius when first deploying live.",
     )
     max_daily_loss: float = Field(
-        default=30.0, gt=0.0,
+        default=30.0,
+        gt=0.0,
         description="Hard daily loss limit in USDT. Broker raises and "
-                    "stops accepting new orders for the rest of the UTC "
-                    "day if realised loss exceeds this.",
+        "stops accepting new orders for the rest of the UTC "
+        "day if realised loss exceeds this.",
     )
     max_open_positions: int = Field(default=3, ge=1, le=10)
 
     reconcile_every_n_orders: int = Field(
-        default=5, ge=1,
+        default=5,
+        ge=1,
         description="Run exchange-vs-local reconciliation after this many "
-                    "orders, alerting if drift detected.",
+        "orders, alerting if drift detected.",
     )
 
     @model_validator(mode="after")
-    def _sane_limits(self) -> "LiveConfig":
+    def _sane_limits(self) -> LiveConfig:
         if self.max_stake_per_trade > 500:
             raise ValueError(
                 "max_stake_per_trade > 500 USDT is unusually large for "

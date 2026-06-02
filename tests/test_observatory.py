@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
-
 from daytrade.config import WatchlistConfig, load_config
 from daytrade.observatory import (
     LiveMockFeed,
@@ -32,17 +30,29 @@ def _small_watchlist() -> WatchlistConfig:
 
 
 def _observer(tmp_path) -> Observer:
-    return Observer(load_config(load_dotenv_file=False), _small_watchlist(),
-                    db=_db(tmp_path), feed=LiveMockFeed())
+    return Observer(
+        load_config(load_dotenv_file=False),
+        _small_watchlist(),
+        db=_db(tmp_path),
+        feed=LiveMockFeed(),
+    )
 
 
 # --- database --------------------------------------------------------------
 
+
 def test_db_creates_schema(tmp_path):
     db = _db(tmp_path)
-    for table in ("market_snapshots", "predictions", "prediction_outcomes",
-                  "paper_trades", "safety_scores", "symbol_health",
-                  "bot_runs", "errors"):
+    for table in (
+        "market_snapshots",
+        "predictions",
+        "prediction_outcomes",
+        "paper_trades",
+        "safety_scores",
+        "symbol_health",
+        "bot_runs",
+        "errors",
+    ):
         assert db.count(table) == 0
     db.close()
 
@@ -61,6 +71,7 @@ def test_db_recovers_dangling_runs(tmp_path):
     """Only runs whose PID is no longer alive should be marked crashed —
     a sibling process that's still running must not be clobbered."""
     import os
+
     db = _db(tmp_path)
     # PIDs above 4_000_000 are outside the default Linux/macOS PID space.
     dead_pid = 4_000_001
@@ -82,6 +93,7 @@ def test_db_keeps_alive_runs_running(tmp_path):
     different process calls mark_dangling_runs_crashed (this was the
     bug that took the live bot's dashboard offline)."""
     import os
+
     db = _db(tmp_path)
     db.start_bot_run(pid=os.getpid())  # ourselves — definitely alive
     crashed = db.mark_dangling_runs_crashed()
@@ -117,6 +129,7 @@ def test_db_outcome_upsert(tmp_path):
 
 # --- feed ------------------------------------------------------------------
 
+
 def test_feed_is_deterministic():
     feed = LiveMockFeed()
     assert feed.price_at("BTCUSDT", _T0) == feed.price_at("BTCUSDT", _T0)
@@ -137,38 +150,62 @@ def test_feed_prices_are_sane():
 
 # --- safety score ----------------------------------------------------------
 
+
 def test_safety_score_calm_is_high():
-    a = compute_safety_score(SafetyInputs(
-        trend_strength=0.5, volatility=0.003, liquidity_notional=900_000,
-        spread_bps=2.5, imbalance=0.05, chop=False,
-        slippage_estimate_bps=3, panic=False, recent_accuracy=0.58))
+    a = compute_safety_score(
+        SafetyInputs(
+            trend_strength=0.5,
+            volatility=0.003,
+            liquidity_notional=900_000,
+            spread_bps=2.5,
+            imbalance=0.05,
+            chop=False,
+            slippage_estimate_bps=3,
+            panic=False,
+            recent_accuracy=0.58,
+        )
+    )
     assert a.score >= 61
     assert a.status == "SAFE_TO_OBSERVE"
 
 
 def test_safety_score_panic_is_unsafe():
-    a = compute_safety_score(SafetyInputs(
-        trend_strength=0.9, volatility=0.03, liquidity_notional=400_000,
-        spread_bps=12, imbalance=-0.6, chop=False,
-        slippage_estimate_bps=30, panic=True))
+    a = compute_safety_score(
+        SafetyInputs(
+            trend_strength=0.9,
+            volatility=0.03,
+            liquidity_notional=400_000,
+            spread_bps=12,
+            imbalance=-0.6,
+            chop=False,
+            slippage_estimate_bps=30,
+            panic=True,
+        )
+    )
     assert a.score <= 20
     assert a.status == "UNSAFE" and a.condition == "PANIC"
 
 
 def test_safety_score_illiquid_condition():
-    a = compute_safety_score(SafetyInputs(
-        trend_strength=0.4, volatility=0.008, liquidity_notional=80_000,
-        spread_bps=28, imbalance=0.2, chop=False, slippage_estimate_bps=22,
-        panic=False))
+    a = compute_safety_score(
+        SafetyInputs(
+            trend_strength=0.4,
+            volatility=0.008,
+            liquidity_notional=80_000,
+            spread_bps=28,
+            imbalance=0.2,
+            chop=False,
+            slippage_estimate_bps=22,
+            panic=False,
+        )
+    )
     assert a.condition == "ILLIQUID"
 
 
 def test_aggregate_safety_is_pessimistic():
     """The global score is dragged toward the weakest symbol."""
-    good = compute_safety_score(SafetyInputs(0.5, 0.003, 900_000, 2.5, 0.0,
-                                             False, 3, False))
-    bad = compute_safety_score(SafetyInputs(0.9, 0.03, 100_000, 30, -0.6,
-                                            False, 35, True))
+    good = compute_safety_score(SafetyInputs(0.5, 0.003, 900_000, 2.5, 0.0, False, 3, False))
+    bad = compute_safety_score(SafetyInputs(0.9, 0.03, 100_000, 30, -0.6, False, 35, True))
     agg = aggregate_safety([good, bad])
     assert agg.score < (good.score + bad.score) / 2
     assert agg.condition == "PANIC"  # worst condition wins
@@ -176,11 +213,20 @@ def test_aggregate_safety_is_pessimistic():
 
 # --- prediction tracking ---------------------------------------------------
 
+
 def test_prediction_not_evaluated_before_horizon():
     feed = LiveMockFeed()
-    pred = {"id": 1, "ts": _T0.isoformat(), "symbol": "BTCUSDT",
-            "direction": "buy", "entry": 100.0, "stop": 99.0, "target": 102.0,
-            "confidence": 0.6, "market_condition": "CALM"}
+    pred = {
+        "id": 1,
+        "ts": _T0.isoformat(),
+        "symbol": "BTCUSDT",
+        "direction": "buy",
+        "entry": 100.0,
+        "stop": 99.0,
+        "target": 102.0,
+        "confidence": 0.6,
+        "market_condition": "CALM",
+    }
     outcome, full = evaluate_prediction(pred, feed, _T0 + timedelta(minutes=2))
     assert outcome is None and full is False
 
@@ -188,10 +234,17 @@ def test_prediction_not_evaluated_before_horizon():
 def test_prediction_evaluated_after_horizon():
     feed = LiveMockFeed()
     entry = feed.price_at("BTCUSDT", _T0)
-    pred = {"id": 1, "ts": _T0.isoformat(), "symbol": "BTCUSDT",
-            "direction": "buy", "entry": entry, "stop": entry * 0.97,
-            "target": entry * 1.03, "confidence": 0.6,
-            "market_condition": "CALM"}
+    pred = {
+        "id": 1,
+        "ts": _T0.isoformat(),
+        "symbol": "BTCUSDT",
+        "direction": "buy",
+        "entry": entry,
+        "stop": entry * 0.97,
+        "target": entry * 1.03,
+        "confidence": 0.6,
+        "market_condition": "CALM",
+    }
     outcome, _ = evaluate_prediction(pred, feed, _T0 + timedelta(minutes=70))
     assert outcome is not None
     assert outcome["price_5m"] is not None
@@ -199,14 +252,21 @@ def test_prediction_evaluated_after_horizon():
 
 
 def test_prediction_memory_detects_false_confidence():
-    rows = [{"directionally_correct": 0, "confidence": 0.82,
-             "market_condition": "CHOPPY", "symbol": "DOGEUSDT"}
-            for _ in range(6)]
+    rows = [
+        {
+            "directionally_correct": 0,
+            "confidence": 0.82,
+            "market_condition": "CHOPPY",
+            "symbol": "DOGEUSDT",
+        }
+        for _ in range(6)
+    ]
     memory = build_prediction_memory(rows)
     assert memory.false_confidence_warnings()
 
 
 # --- observer --------------------------------------------------------------
+
 
 def test_observer_runs_one_cycle(tmp_path):
     obs = _observer(tmp_path)
@@ -243,14 +303,22 @@ def test_observer_evaluates_outcomes_later(tmp_path):
 def test_observer_restart_recovers(tmp_path):
     """A new observer marks the prior dangling run crashed and resumes."""
     db_path = tmp_path / "obs.db"
-    obs1 = Observer(load_config(load_dotenv_file=False), _small_watchlist(),
-                    db=ObservatoryDB(db_path), feed=LiveMockFeed())
+    obs1 = Observer(
+        load_config(load_dotenv_file=False),
+        _small_watchlist(),
+        db=ObservatoryDB(db_path),
+        feed=LiveMockFeed(),
+    )
     obs1.start()
     obs1.run_once(_T0)
     obs1.db.close()  # simulate a crash (no clean stop)
 
-    obs2 = Observer(load_config(load_dotenv_file=False), _small_watchlist(),
-                    db=ObservatoryDB(db_path), feed=LiveMockFeed())
+    obs2 = Observer(
+        load_config(load_dotenv_file=False),
+        _small_watchlist(),
+        db=ObservatoryDB(db_path),
+        feed=LiveMockFeed(),
+    )
     obs2.start()
     runs = [r for r in [obs2.db.current_bot_run()] if r]
     assert runs and runs[0]["status"] == "running"

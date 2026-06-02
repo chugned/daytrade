@@ -74,9 +74,15 @@ def evaluate_prediction(
 
     # Non-directional predictions (HOLD) record prices but no trade result.
     if direction not in ("buy", "sell") or entry is None:
-        outcome.update({"directionally_correct": None, "stop_hit": 0,
-                        "target_hit": 0, "realized_pnl": 0.0,
-                        "slippage_estimate": 0.0})
+        outcome.update(
+            {
+                "directionally_correct": None,
+                "stop_hit": 0,
+                "target_hit": 0,
+                "realized_pnl": 0.0,
+                "slippage_estimate": 0.0,
+            }
+        )
         return outcome, fully_evaluated
 
     # Walk the realised path minute-by-minute for stop / target touches.
@@ -105,13 +111,15 @@ def evaluate_prediction(
     # A small, fixed simulated slippage estimate (bps of entry).
     slippage = round(entry * 0.0004, 8)
 
-    outcome.update({
-        "directionally_correct": directionally_correct,
-        "stop_hit": int(stop_hit),
-        "target_hit": int(target_hit),
-        "realized_pnl": realized_pnl,
-        "slippage_estimate": slippage,
-    })
+    outcome.update(
+        {
+            "directionally_correct": directionally_correct,
+            "stop_hit": int(stop_hit),
+            "target_hit": int(target_hit),
+            "realized_pnl": realized_pnl,
+            "slippage_estimate": slippage,
+        }
+    )
     return outcome, fully_evaluated
 
 
@@ -131,9 +139,11 @@ class GroupAccuracy:
     @property
     def is_fake_confidence(self) -> bool:
         """High stated confidence but accuracy no better than a coin flip."""
-        return (self.samples >= 5
-                and self.mean_confidence >= _FAKE_CONFIDENCE_LEVEL
-                and self.accuracy < 0.5)
+        return (
+            self.samples >= 5
+            and self.mean_confidence >= _FAKE_CONFIDENCE_LEVEL
+            and self.accuracy < 0.5
+        )
 
 
 @dataclass
@@ -162,7 +172,8 @@ class PredictionMemory:
                 warnings.append(
                     f"{group.label}: {group.mean_confidence:.0%} stated "
                     f"confidence but only {group.accuracy:.0%} accurate "
-                    f"({group.samples} samples) — treat as fake confidence")
+                    f"({group.samples} samples) — treat as fake confidence"
+                )
         return warnings
 
     def should_stop_trading(self) -> bool:
@@ -170,8 +181,11 @@ class PredictionMemory:
         return self.total >= 10 and self.overall_accuracy < _UNRELIABLE_ACCURACY
 
     def best_regimes(self) -> List[str]:
-        ranked = sorted((g for g in self.by_condition.values() if g.samples >= 3),
-                        key=lambda g: g.accuracy, reverse=True)
+        ranked = sorted(
+            (g for g in self.by_condition.values() if g.samples >= 3),
+            key=lambda g: g.accuracy,
+            reverse=True,
+        )
         return [g.label for g in ranked]
 
     def worst_regimes(self) -> List[str]:
@@ -220,8 +234,8 @@ def build_prediction_memory(outcomes: List[Dict[str, Any]]) -> PredictionMemory:
     def _finish(store: Dict[str, List[float]]) -> Dict[str, GroupAccuracy]:
         return {
             label: GroupAccuracy(
-                label=label, samples=int(t), correct=int(c),
-                mean_confidence=(s / t if t else 0.0))
+                label=label, samples=int(t), correct=int(c), mean_confidence=(s / t if t else 0.0)
+            )
             for label, (c, t, s) in store.items()
         }
 

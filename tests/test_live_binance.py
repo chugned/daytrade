@@ -39,12 +39,15 @@ def _trade_only_perms() -> KeyPermissions:
     )
 
 
-def _make(client: MagicMock | None = None, writes_enabled: bool = False
-          ) -> tuple[BinanceExchange, MagicMock]:
+def _make(
+    client: MagicMock | None = None, writes_enabled: bool = False
+) -> tuple[BinanceExchange, MagicMock]:
     client = client or MagicMock()
     ex = BinanceExchange(
-        api_key="key", api_secret="secret",
-        client=client, writes_enabled=writes_enabled,
+        api_key="key",
+        api_secret="secret",
+        client=client,
+        writes_enabled=writes_enabled,
         permissions=_trade_only_perms(),
     )
     return ex, client
@@ -57,58 +60,65 @@ def _make(client: MagicMock | None = None, writes_enabled: bool = False
 
 def test_construction_requires_credentials():
     with pytest.raises(ValueError, match="api_key"):
-        BinanceExchange(api_key="", api_secret="x",
-                        client=MagicMock(),
-                        permissions=_trade_only_perms())
+        BinanceExchange(
+            api_key="", api_secret="x", client=MagicMock(), permissions=_trade_only_perms()
+        )
 
 
 def test_construction_refuses_withdraw_enabled_key():
     perms = KeyPermissions(
-        ip_restricted=True, can_trade=True,
+        ip_restricted=True,
+        can_trade=True,
         can_withdraw=True,  # the cardinal sin
         can_internal_transfer=False,
         enable_spot_and_margin_trading=True,
-        enable_futures=False, enable_universal_transfer=False,
+        enable_futures=False,
+        enable_universal_transfer=False,
     )
     with pytest.raises(WithdrawalPermissionForbidden):
-        BinanceExchange(api_key="k", api_secret="s",
-                        client=MagicMock(), permissions=perms)
+        BinanceExchange(api_key="k", api_secret="s", client=MagicMock(), permissions=perms)
 
 
 def test_construction_refuses_internal_transfer_key():
     perms = KeyPermissions(
-        ip_restricted=True, can_trade=True, can_withdraw=False,
+        ip_restricted=True,
+        can_trade=True,
+        can_withdraw=False,
         can_internal_transfer=True,  # also rejected
-        enable_spot_and_margin_trading=True, enable_futures=False,
+        enable_spot_and_margin_trading=True,
+        enable_futures=False,
         enable_universal_transfer=False,
     )
     with pytest.raises(WithdrawalPermissionForbidden):
-        BinanceExchange(api_key="k", api_secret="s",
-                        client=MagicMock(), permissions=perms)
+        BinanceExchange(api_key="k", api_secret="s", client=MagicMock(), permissions=perms)
 
 
 def test_construction_refuses_universal_transfer_key():
     perms = KeyPermissions(
-        ip_restricted=True, can_trade=True, can_withdraw=False,
+        ip_restricted=True,
+        can_trade=True,
+        can_withdraw=False,
         can_internal_transfer=False,
-        enable_spot_and_margin_trading=True, enable_futures=False,
+        enable_spot_and_margin_trading=True,
+        enable_futures=False,
         enable_universal_transfer=True,
     )
     with pytest.raises(WithdrawalPermissionForbidden):
-        BinanceExchange(api_key="k", api_secret="s",
-                        client=MagicMock(), permissions=perms)
+        BinanceExchange(api_key="k", api_secret="s", client=MagicMock(), permissions=perms)
 
 
 def test_construction_refuses_key_without_trade_permission():
     perms = KeyPermissions(
-        ip_restricted=True, can_trade=False, can_withdraw=False,
+        ip_restricted=True,
+        can_trade=False,
+        can_withdraw=False,
         can_internal_transfer=False,
-        enable_spot_and_margin_trading=False, enable_futures=False,
+        enable_spot_and_margin_trading=False,
+        enable_futures=False,
         enable_universal_transfer=False,
     )
     with pytest.raises(WithdrawalPermissionForbidden, match="spot trading"):
-        BinanceExchange(api_key="k", api_secret="s",
-                        client=MagicMock(), permissions=perms)
+        BinanceExchange(api_key="k", api_secret="s", client=MagicMock(), permissions=perms)
 
 
 def test_writes_disabled_by_default():
@@ -119,8 +129,11 @@ def test_writes_disabled_by_default():
 def test_place_market_order_raises_in_shadow_mode():
     ex, _ = _make(writes_enabled=False)
     order = ExchangeOrder(
-        client_order_id="x", symbol="BTCUSDT", side=Side.BUY,
-        quantity=0.001, reference_price=100_000.0,
+        client_order_id="x",
+        symbol="BTCUSDT",
+        side=Side.BUY,
+        quantity=0.001,
+        reference_price=100_000.0,
     )
     with pytest.raises(ShadowModeError):
         ex.place_market_order(order)
@@ -175,9 +188,17 @@ def test_get_position_zero_when_flat():
 def test_list_open_orders_translates_ccxt_format():
     ex, client = _make()
     client.fetch_open_orders.return_value = [
-        {"clientOrderId": "abc", "id": "12345", "symbol": "BTC/USDT",
-         "side": "buy", "amount": 0.001, "filled": 0.0,
-         "average": 0.0, "price": 100_000.0, "status": "open"}
+        {
+            "clientOrderId": "abc",
+            "id": "12345",
+            "symbol": "BTC/USDT",
+            "side": "buy",
+            "amount": 0.001,
+            "filled": 0.0,
+            "average": 0.0,
+            "price": 100_000.0,
+            "status": "open",
+        }
     ]
     orders = ex.list_open_orders("BTCUSDT")
     assert len(orders) == 1
@@ -196,12 +217,17 @@ def test_list_open_orders_translates_ccxt_format():
 def test_place_market_order_succeeds_when_writes_enabled():
     ex, client = _make(writes_enabled=True)
     client.create_order.return_value = {
-        "filled": 0.001, "average": 100_050.0,
-        "fee": {"cost": 0.10}, "timestamp": 1750000000000,
+        "filled": 0.001,
+        "average": 100_050.0,
+        "fee": {"cost": 0.10},
+        "timestamp": 1750000000000,
     }
     order = ExchangeOrder(
-        client_order_id="abc123", symbol="BTCUSDT", side=Side.BUY,
-        quantity=0.001, reference_price=100_000.0,
+        client_order_id="abc123",
+        symbol="BTCUSDT",
+        side=Side.BUY,
+        quantity=0.001,
+        reference_price=100_000.0,
     )
     fill = ex.place_market_order(order)
     assert fill.quantity == 0.001
@@ -219,8 +245,11 @@ def test_place_market_order_maps_insufficient_to_rejected():
     ex, client = _make(writes_enabled=True)
     client.create_order.side_effect = RuntimeError("Insufficient balance")
     order = ExchangeOrder(
-        client_order_id="x", symbol="BTCUSDT", side=Side.BUY,
-        quantity=0.001, reference_price=100_000.0,
+        client_order_id="x",
+        symbol="BTCUSDT",
+        side=Side.BUY,
+        quantity=0.001,
+        reference_price=100_000.0,
     )
     with pytest.raises(OrderRejected):
         ex.place_market_order(order)
@@ -230,8 +259,11 @@ def test_place_market_order_maps_min_lot_to_rejected():
     ex, client = _make(writes_enabled=True)
     client.create_order.side_effect = RuntimeError("LOT_SIZE filter failure")
     order = ExchangeOrder(
-        client_order_id="x", symbol="BTCUSDT", side=Side.BUY,
-        quantity=0.000001, reference_price=100_000.0,
+        client_order_id="x",
+        symbol="BTCUSDT",
+        side=Side.BUY,
+        quantity=0.000001,
+        reference_price=100_000.0,
     )
     with pytest.raises(OrderRejected):
         ex.place_market_order(order)
@@ -241,8 +273,11 @@ def test_place_market_order_maps_network_to_unreachable():
     ex, client = _make(writes_enabled=True)
     client.create_order.side_effect = RuntimeError("connection timed out")
     order = ExchangeOrder(
-        client_order_id="x", symbol="BTCUSDT", side=Side.BUY,
-        quantity=0.001, reference_price=100_000.0,
+        client_order_id="x",
+        symbol="BTCUSDT",
+        side=Side.BUY,
+        quantity=0.001,
+        reference_price=100_000.0,
     )
     with pytest.raises(ExchangeUnreachable):
         ex.place_market_order(order)
@@ -251,11 +286,16 @@ def test_place_market_order_maps_network_to_unreachable():
 def test_place_market_order_rejects_zero_filled_response():
     ex, client = _make(writes_enabled=True)
     client.create_order.return_value = {
-        "filled": 0.0, "average": 0.0, "timestamp": 1750000000000,
+        "filled": 0.0,
+        "average": 0.0,
+        "timestamp": 1750000000000,
     }
     order = ExchangeOrder(
-        client_order_id="x", symbol="BTCUSDT", side=Side.BUY,
-        quantity=0.001, reference_price=100_000.0,
+        client_order_id="x",
+        symbol="BTCUSDT",
+        side=Side.BUY,
+        quantity=0.001,
+        reference_price=100_000.0,
     )
     with pytest.raises(OrderRejected):
         ex.place_market_order(order)
@@ -282,8 +322,9 @@ def test_from_env_requires_both_vars(monkeypatch):
     monkeypatch.delenv("DAYTRADE_K", raising=False)
     monkeypatch.delenv("DAYTRADE_S", raising=False)
     with pytest.raises(RuntimeError, match="API credentials"):
-        from_env(api_key_env="DAYTRADE_K", api_secret_env="DAYTRADE_S",
-                 permissions=_trade_only_perms())
+        from_env(
+            api_key_env="DAYTRADE_K", api_secret_env="DAYTRADE_S", permissions=_trade_only_perms()
+        )
 
 
 def test_from_env_reads_credentials(monkeypatch):
@@ -293,5 +334,6 @@ def test_from_env_reads_credentials(monkeypatch):
     # which will fail at the ccxt import. We verify that path by catching
     # the specific error.
     with pytest.raises(RuntimeError, match="ccxt"):
-        from_env(api_key_env="DAYTRADE_K", api_secret_env="DAYTRADE_S",
-                 permissions=_trade_only_perms())
+        from_env(
+            api_key_env="DAYTRADE_K", api_secret_env="DAYTRADE_S", permissions=_trade_only_perms()
+        )

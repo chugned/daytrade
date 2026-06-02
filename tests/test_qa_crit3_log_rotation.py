@@ -14,8 +14,6 @@ from __future__ import annotations
 
 import logging
 
-import pytest
-
 from daytrade.observatory.database import ObservatoryDB
 from daytrade.runtime import add_file_logging
 
@@ -32,9 +30,11 @@ def test_add_file_logging_attaches_rotating_handler(tmp_path):
 
     log_path = tmp_path / "daytrade.log"
     add_file_logging(str(log_path), max_bytes=1024, backup_count=3)
-    matched = [h for h in root.handlers
-               if isinstance(h, RotatingFileHandler)
-               and h.baseFilename == str(log_path.resolve())]
+    matched = [
+        h
+        for h in root.handlers
+        if isinstance(h, RotatingFileHandler) and h.baseFilename == str(log_path.resolve())
+    ]
     assert matched, "expected a RotatingFileHandler attached"
     rh = matched[0]
     assert rh.maxBytes == 1024
@@ -55,8 +55,7 @@ def test_writelog_rotates_when_over_cap(tmp_path):
 
         # Hammer the writelog until it definitely rotated at least once
         for i in range(200):
-            db._writelog("INSERT", "test_table", i,
-                         {"symbol": "BTCUSDT", "price": i})
+            db._writelog("INSERT", "test_table", i, {"symbol": "BTCUSDT", "price": i})
 
         live = db._writelog_path
         bak1 = live.with_suffix(live.suffix + ".1")
@@ -77,9 +76,9 @@ def test_writelog_rotation_caps_total_disk(tmp_path):
         db._WRITELOG_BACKUP_COUNT = 3
 
         for i in range(5000):
-            db._writelog("INSERT", "test_table", i,
-                         {"symbol": "BTCUSDT", "price": i,
-                          "detail": "x" * 50})
+            db._writelog(
+                "INSERT", "test_table", i, {"symbol": "BTCUSDT", "price": i, "detail": "x" * 50}
+            )
 
         live = db._writelog_path
         total = live.stat().st_size if live.exists() else 0

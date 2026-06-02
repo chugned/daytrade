@@ -11,9 +11,9 @@ from typing import List, Optional
 
 from ..config.schema import AppConfig
 from ..models import (
+    OHLCV,
     ConsensusPrice,
     ExchangeStatus,
-    OHLCV,
     OrderBookSnapshot,
     PriceTick,
 )
@@ -83,9 +83,13 @@ class MarketDataProvider:
         # A placeholder tick flagged DOWN so the consensus engine excludes it.
         # price must be > 0 to satisfy validation; status is what matters.
         from datetime import datetime, timezone
+
         return PriceTick(
-            symbol=symbol, exchange=exchange, price=1.0,
-            timestamp=datetime.now(timezone.utc), status=ExchangeStatus.DOWN,
+            symbol=symbol,
+            exchange=exchange,
+            price=1.0,
+            timestamp=datetime.now(timezone.utc),
+            status=ExchangeStatus.DOWN,
         )
 
 
@@ -105,12 +109,14 @@ def build_provider(
         clients: List[MarketDataClient] = []
         for name in config.exchanges.sources:
             try:
-                clients.append(build_public_client(
-                    name,
-                    timeout=config.exchanges.timeout_seconds,
-                    max_retries=config.exchanges.max_retries,
-                    allow_network=True,
-                ))
+                clients.append(
+                    build_public_client(
+                        name,
+                        timeout=config.exchanges.timeout_seconds,
+                        max_retries=config.exchanges.max_retries,
+                        allow_network=True,
+                    )
+                )
             except ExchangeError as exc:
                 _log.warning("skipping public source %s: %s", name, exc)
         if clients:
@@ -120,15 +126,23 @@ def build_provider(
     # Offline / mock path.
     if candles is None:
         candles = generate_random_walk(
-            symbol=symbol, n_bars=600, start_price=100.0,
-            drift=0.0, volatility=0.004, seed=config.runtime.random_seed,
+            symbol=symbol,
+            n_bars=600,
+            start_price=100.0,
+            drift=0.0,
+            volatility=0.004,
+            seed=config.runtime.random_seed,
         )
     # Three mock "exchanges" with tiny biases -> realistic consensus dispersion.
     biases = [(-1.5, 3), (0.0, 7), (1.5, 11)]
     mock_clients: List[MarketDataClient] = [
         MockExchange(
-            candles, name=f"mock_{i}", price_bias_bps=bias,
-            orderbook_imbalance=0.0, spread_bps=4.0, depth_seed=seed,
+            candles,
+            name=f"mock_{i}",
+            price_bias_bps=bias,
+            orderbook_imbalance=0.0,
+            spread_bps=4.0,
+            depth_seed=seed,
         )
         for i, (bias, seed) in enumerate(biases)
     ]

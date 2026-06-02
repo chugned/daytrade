@@ -67,9 +67,7 @@ def compute_consensus(
     inlier_mask = _mad_outlier_mask(prices, config.outlier_z_threshold)
 
     used = [healthy[i] for i in range(len(healthy)) if inlier_mask[i]]
-    rejected_outliers = [
-        healthy[i].exchange for i in range(len(healthy)) if not inlier_mask[i]
-    ]
+    rejected_outliers = [healthy[i].exchange for i in range(len(healthy)) if not inlier_mask[i]]
     if not used:  # pathological — keep everything rather than crash
         used = healthy
         rejected_outliers = []
@@ -81,17 +79,15 @@ def compute_consensus(
     median = float(np.median(accepted_prices))
     dispersion = (hi - lo) / median if median > 0 else 0.0
 
-    degraded = (
-        len(used) < config.min_sources
-        or dispersion > config.max_dispersion
-        or bool(down)
-    )
+    degraded = len(used) < config.min_sources or dispersion > config.max_dispersion or bool(down)
     if rejected_outliers:
         _log.warning("consensus rejected outlier sources: %s", rejected_outliers)
     if degraded:
         _log.warning(
             "consensus DEGRADED (sources=%d dispersion=%.4f down=%s)",
-            len(used), dispersion, down,
+            len(used),
+            dispersion,
+            down,
         )
 
     timestamps = [t.timestamp for t in used]

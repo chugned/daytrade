@@ -20,6 +20,7 @@ def test_build_dataset_is_nan_free(ml_dataset):
 
 def test_build_dataset_rejects_short_series(config):
     from daytrade.exchanges import generate_random_walk
+
     short = generate_random_walk("BTC", n_bars=20, seed=1)
     with pytest.raises(ValueError):
         build_dataset(short, config)
@@ -61,8 +62,9 @@ def test_untrained_model_refuses_to_save(tmp_path):
 
 
 def test_fit_rejects_tiny_dataset(ml_dataset):
-    tiny = type(ml_dataset)(X=ml_dataset.X.iloc[:5], y=ml_dataset.y.iloc[:5],
-                            feature_names=ml_dataset.feature_names)
+    tiny = type(ml_dataset)(
+        X=ml_dataset.X.iloc[:5], y=ml_dataset.y.iloc[:5], feature_names=ml_dataset.feature_names
+    )
     with pytest.raises(ValueError):
         PredictiveModel().fit(tiny)
 

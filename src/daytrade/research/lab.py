@@ -44,8 +44,9 @@ class ResearchResult:
     error: Optional[str] = None
 
 
-def _verdict(bt: BacktestMetrics, wf: WalkForwardReport,
-             config: AppConfig) -> "tuple[str, List[str]]":
+def _verdict(
+    bt: BacktestMetrics, wf: WalkForwardReport, config: AppConfig
+) -> tuple[str, List[str]]:
     """Turn backtest + walk-forward results into one honest verdict.
 
     The default — and most common, correct — answer is 'no edge'.
@@ -60,8 +61,10 @@ def _verdict(bt: BacktestMetrics, wf: WalkForwardReport,
         notes.append(f"walk-forward test accuracy {acc:.0%} is implausibly high")
         return "SUSPECT — likely lookahead / leakage, not a real edge", notes
     if bt.sharpe_like > sharpe_cap:
-        notes.append(f"backtest Sharpe-like {bt.sharpe_like:.1f} exceeds the "
-                     f"{sharpe_cap} realism ceiling")
+        notes.append(
+            f"backtest Sharpe-like {bt.sharpe_like:.1f} exceeds the "
+            f"{sharpe_cap} realism ceiling"
+        )
         return "OVERFIT — backtest too good to be real", notes
     if acc < 0.50:
         notes.append(f"walk-forward accuracy {acc:.0%} is below a coin flip")
@@ -72,10 +75,10 @@ def _verdict(bt: BacktestMetrics, wf: WalkForwardReport,
     if bt.total_return_pct <= 0:
         notes.append(f"backtest return {bt.total_return_pct:+.1f}% after costs")
         return "NO EDGE — strategy loses money after fees & slippage", notes
-    notes.append(f"out-of-sample accuracy {acc:.0%}, backtest "
-                 f"{bt.total_return_pct:+.1f}% after costs")
-    return ("WEAK SIGNAL — promising but unproven; needs live "
-            "out-of-sample confirmation"), notes
+    notes.append(
+        f"out-of-sample accuracy {acc:.0%}, backtest " f"{bt.total_return_pct:+.1f}% after costs"
+    )
+    return ("WEAK SIGNAL — promising but unproven; needs live " "out-of-sample confirmation"), notes
 
 
 def run_research(
@@ -87,6 +90,7 @@ def run_research(
 ) -> List[ResearchResult]:
     """Evaluate each symbol over real downloaded history."""
     from ..config import load_config
+
     config = config or load_config(load_dotenv_file=False)
     results: List[ResearchResult] = []
 
@@ -95,59 +99,90 @@ def run_research(
         try:
             candles = download_history(symbol, interval=interval, days=days)
             if len(candles) < config.backtest.warmup_bars + 60:
-                results.append(ResearchResult(
-                    symbol=symbol, interval=interval, bars=len(candles),
-                    start="", end="", verdict="INSUFFICIENT DATA",
-                    notes=[f"only {len(candles)} bars of history"]))
+                results.append(
+                    ResearchResult(
+                        symbol=symbol,
+                        interval=interval,
+                        bars=len(candles),
+                        start="",
+                        end="",
+                        verdict="INSUFFICIENT DATA",
+                        notes=[f"only {len(candles)} bars of history"],
+                    )
+                )
                 continue
 
-            _log.info("research: backtesting %s on %d real %s bars",
-                      symbol, len(candles), interval)
+            _log.info("research: backtesting %s on %d real %s bars", symbol, len(candles), interval)
             bt = Backtester(config, model).run(candles)
             wf = walk_forward_validate(candles, config)
             verdict, notes = _verdict(bt.metrics, wf, config)
-            results.append(ResearchResult(
-                symbol=symbol, interval=interval, bars=len(candles),
-                start=candles[0].timestamp.isoformat(),
-                end=candles[-1].timestamp.isoformat(),
-                backtest=bt.metrics, walkforward=wf,
-                verdict=verdict, notes=notes))
+            results.append(
+                ResearchResult(
+                    symbol=symbol,
+                    interval=interval,
+                    bars=len(candles),
+                    start=candles[0].timestamp.isoformat(),
+                    end=candles[-1].timestamp.isoformat(),
+                    backtest=bt.metrics,
+                    walkforward=wf,
+                    verdict=verdict,
+                    notes=notes,
+                )
+            )
         except Exception as exc:  # noqa: BLE001 - one symbol must not abort the lab
             _log.exception("research failed for %s", symbol)
-            results.append(ResearchResult(
-                symbol=symbol, interval=interval, bars=0, start="", end="",
-                verdict="ERROR", error=repr(exc)))
+            results.append(
+                ResearchResult(
+                    symbol=symbol,
+                    interval=interval,
+                    bars=0,
+                    start="",
+                    end="",
+                    verdict="ERROR",
+                    error=repr(exc),
+                )
+            )
     return results
 
 
-def render_research(results: List[ResearchResult],
-                    console: Optional[Console] = None) -> None:
+def render_research(results: List[ResearchResult], console: Optional[Console] = None) -> None:
     """Print a research-lab report for a set of results."""
     console = console or Console()
-    table = Table(title="Historical research — real data, realistic costs",
-                  header_style="bold")
-    for col in ("Symbol", "Bars", "Backtest return", "Win rate", "Sharpe~",
-                "Max DD", "WF test acc.", "Overfit gap", "Verdict"):
+    table = Table(title="Historical research — real data, realistic costs", header_style="bold")
+    for col in (
+        "Symbol",
+        "Bars",
+        "Backtest return",
+        "Win rate",
+        "Sharpe~",
+        "Max DD",
+        "WF test acc.",
+        "Overfit gap",
+        "Verdict",
+    ):
         table.add_column(col)
 
     for r in results:
         if r.error:
-            table.add_row(r.symbol, "—", "—", "—", "—", "—", "—", "—",
-                          f"[red]ERROR[/red]")
+            table.add_row(r.symbol, "—", "—", "—", "—", "—", "—", "—", "[red]ERROR[/red]")
             continue
         bt, wf = r.backtest, r.walkforward
         if bt is None or wf is None:
-            table.add_row(r.symbol, str(r.bars), "—", "—", "—", "—", "—", "—",
-                          r.verdict)
+            table.add_row(r.symbol, str(r.bars), "—", "—", "—", "—", "—", "—", r.verdict)
             continue
-        edge = ("WEAK SIGNAL" in r.verdict)
+        edge = "WEAK SIGNAL" in r.verdict
         vstyle = "yellow" if edge else "red"
         table.add_row(
-            r.symbol, str(r.bars),
-            f"{bt.total_return_pct:+.1f}%", f"{bt.win_rate:.0%}",
-            f"{bt.sharpe_like:.2f}", f"{bt.max_drawdown_pct:.1f}%",
-            f"{wf.mean_test_accuracy:.0%}", f"{wf.mean_overfit_gap:+.2f}",
-            f"[{vstyle}]{r.verdict.split(' — ')[0]}[/{vstyle}]")
+            r.symbol,
+            str(r.bars),
+            f"{bt.total_return_pct:+.1f}%",
+            f"{bt.win_rate:.0%}",
+            f"{bt.sharpe_like:.2f}",
+            f"{bt.max_drawdown_pct:.1f}%",
+            f"{wf.mean_test_accuracy:.0%}",
+            f"{wf.mean_overfit_gap:+.2f}",
+            f"[{vstyle}]{r.verdict.split(' — ')[0]}[/{vstyle}]",
+        )
     console.print(table)
 
     for r in results:
@@ -156,13 +191,21 @@ def render_research(results: List[ResearchResult],
             continue
         body = f"[bold]{r.verdict}[/bold]\n" + "\n".join(f"• {n}" for n in r.notes)
         edge = "WEAK SIGNAL" in r.verdict
-        console.print(Panel(body, title=f"{r.symbol} — {r.interval} · "
-                            f"{r.bars} bars",
-                            border_style="yellow" if edge else "red"))
+        console.print(
+            Panel(
+                body,
+                title=f"{r.symbol} — {r.interval} · " f"{r.bars} bars",
+                border_style="yellow" if edge else "red",
+            )
+        )
 
-    console.print(Panel(
-        "Research over real history with modeled fees & slippage. Backtests "
-        "are NOT reality — they omit competition, your own market impact, and "
-        "the future. A 'weak signal' is a candidate for live observation, not "
-        "a green light to trade. Most honest verdicts are 'no edge'.",
-        title="How to read this", border_style="magenta"))
+    console.print(
+        Panel(
+            "Research over real history with modeled fees & slippage. Backtests "
+            "are NOT reality — they omit competition, your own market impact, and "
+            "the future. A 'weak signal' is a candidate for live observation, not "
+            "a green light to trade. Most honest verdicts are 'no edge'.",
+            title="How to read this",
+            border_style="magenta",
+        )
+    )

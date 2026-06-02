@@ -31,11 +31,11 @@ def normalize_timestamp(value: Any) -> datetime:
     if isinstance(value, (int, float)):
         epoch = float(value)
         # Auto-detect units by magnitude. Year ~2001 in seconds ~1e9.
-        if epoch >= 1e17:        # nanoseconds
+        if epoch >= 1e17:  # nanoseconds
             epoch /= 1e9
-        elif epoch >= 1e14:      # microseconds
+        elif epoch >= 1e14:  # microseconds
             epoch /= 1e6
-        elif epoch >= 1e11:      # milliseconds
+        elif epoch >= 1e11:  # milliseconds
             epoch /= 1e3
         return datetime.fromtimestamp(epoch, tz=timezone.utc)
 
@@ -72,6 +72,6 @@ class DaytradeModel(BaseModel):
         return self.model_dump_json(indent=indent)
 
     @classmethod
-    def from_json(cls, raw: str | bytes) -> "DaytradeModel":
+    def from_json(cls, raw: str | bytes) -> DaytradeModel:
         """Parse from a JSON string/bytes."""
         return cls.model_validate_json(raw)

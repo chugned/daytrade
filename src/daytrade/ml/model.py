@@ -29,7 +29,7 @@ from sklearn.preprocessing import StandardScaler
 
 from ..config.schema import AppConfig
 from ..features import FeaturePipeline
-from ..models import MLSignal, ModelKind, OHLCV
+from ..models import OHLCV, MLSignal, ModelKind
 from ..models.enums import Bias
 from ..runtime import get_logger
 from .dataset import Dataset
@@ -44,12 +44,17 @@ def build_estimator(kind: ModelKind, seed: int = 42) -> Pipeline:
         clf = LogisticRegression(max_iter=1000, C=1.0, random_state=seed)
     elif kind is ModelKind.RANDOM_FOREST:
         clf = RandomForestClassifier(
-            n_estimators=200, max_depth=6, min_samples_leaf=5,
-            random_state=seed, n_jobs=1,
+            n_estimators=200,
+            max_depth=6,
+            min_samples_leaf=5,
+            random_state=seed,
+            n_jobs=1,
         )
     elif kind is ModelKind.GRADIENT_BOOSTING:
         clf = GradientBoostingClassifier(
-            n_estimators=150, max_depth=3, learning_rate=0.05,
+            n_estimators=150,
+            max_depth=3,
+            learning_rate=0.05,
             random_state=seed,
         )
     else:  # pragma: no cover - exhaustive
@@ -70,8 +75,7 @@ class TrainResult:
 class PredictiveModel:
     """A trainable directional classifier."""
 
-    def __init__(self, kind: ModelKind = ModelKind.GRADIENT_BOOSTING,
-                 seed: int = 42) -> None:
+    def __init__(self, kind: ModelKind = ModelKind.GRADIENT_BOOSTING, seed: int = 42) -> None:
         self.kind = kind
         self.seed = seed
         self._pipeline: Optional[Pipeline] = None
@@ -106,10 +110,13 @@ class PredictiveModel:
             auc = float(roc_auc_score(dataset.y.values, proba))
         except ValueError:
             auc = 0.5
-        _log.info("trained %s: samples=%d acc=%.3f auc=%.3f",
-                  self.kind.value, len(dataset), acc, auc)
+        _log.info(
+            "trained %s: samples=%d acc=%.3f auc=%.3f", self.kind.value, len(dataset), acc, auc
+        )
         return TrainResult(
-            samples=len(dataset), accuracy=acc, auc=auc,
+            samples=len(dataset),
+            accuracy=acc,
+            auc=auc,
             class_balance=dataset.class_balance,
         )
 
@@ -135,11 +142,16 @@ class PredictiveModel:
 
         if self._pipeline is None:
             return MLSignal(
-                symbol=symbol, timestamp=ts, bias=Bias.NEUTRAL,
-                score=0.0, confidence=0.0,
+                symbol=symbol,
+                timestamp=ts,
+                bias=Bias.NEUTRAL,
+                score=0.0,
+                confidence=0.0,
                 reasoning=["ML model not trained — neutral signal"],
-                prob_up=0.5, prob_down=0.5,
-                model_kind=self.kind.value, model_version="untrained",
+                prob_up=0.5,
+                prob_down=0.5,
+                model_kind=self.kind.value,
+                model_version="untrained",
                 feature_count=0,
             )
 
@@ -148,11 +160,16 @@ class PredictiveModel:
         X = row.to_frame().T[self.feature_names]
         if X.isna().any(axis=None):
             return MLSignal(
-                symbol=symbol, timestamp=ts, bias=Bias.NEUTRAL,
-                score=0.0, confidence=0.0,
+                symbol=symbol,
+                timestamp=ts,
+                bias=Bias.NEUTRAL,
+                score=0.0,
+                confidence=0.0,
                 reasoning=["Insufficient history for ML features — neutral"],
-                prob_up=0.5, prob_down=0.5,
-                model_kind=self.kind.value, model_version=self.version,
+                prob_up=0.5,
+                prob_down=0.5,
+                model_kind=self.kind.value,
+                model_version=self.version,
                 feature_count=len(self.feature_names),
             )
 
@@ -169,14 +186,19 @@ class PredictiveModel:
             bias = Bias.NEUTRAL
 
         return MLSignal(
-            symbol=symbol, timestamp=ts, bias=bias,
-            score=score, confidence=confidence,
+            symbol=symbol,
+            timestamp=ts,
+            bias=bias,
+            score=score,
+            confidence=confidence,
             reasoning=[
                 f"P(up)={prob_up:.3f} P(down)={prob_down:.3f}",
                 f"Model: {self.version}",
             ],
-            prob_up=prob_up, prob_down=prob_down,
-            model_kind=self.kind.value, model_version=self.version,
+            prob_up=prob_up,
+            prob_down=prob_down,
+            model_kind=self.kind.value,
+            model_version=self.version,
             feature_count=len(self.feature_names),
         )
 
@@ -199,7 +221,7 @@ class PredictiveModel:
         return path
 
     @classmethod
-    def load(cls, path: Path | str) -> "PredictiveModel":
+    def load(cls, path: Path | str) -> PredictiveModel:
         """Load a model previously written by :meth:`save`."""
         path = Path(path)
         with path.open("rb") as fh:

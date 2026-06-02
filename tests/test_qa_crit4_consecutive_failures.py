@@ -13,13 +13,12 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
-
 from daytrade.observatory.observer import Observer
 
 
 def _obs():
     from daytrade.config.schema import AppConfig, WatchlistConfig
+
     with patch("daytrade.observatory.observer.ObservatoryDB"):
         return Observer(AppConfig(), WatchlistConfig())
 
@@ -35,16 +34,18 @@ def test_backoff_threshold_and_abort_constants_sensible():
 def test_abort_after_threshold_failures_stops_run():
     """After ABORT_THRESHOLD consecutive failures, _stop must be set."""
     obs = _obs()
-    obs._ABORT_THRESHOLD = 3   # tiny for the test
+    obs._ABORT_THRESHOLD = 3  # tiny for the test
     obs._BACKOFF_THRESHOLD = 1
     obs._BACKOFF_MAX_SECONDS = 0  # don't actually sleep
     obs.alerts.emit = lambda *a, **k: None
     obs.db.insert_error = lambda *a, **k: None
     # Make run_once always fail
     call_count = {"n": 0}
+
     def _fail(*_):
         call_count["n"] += 1
         raise RuntimeError("simulated cycle failure")
+
     obs.run_once = _fail
     obs._install_signal_handlers = lambda: None
     obs.start = lambda: None
@@ -72,6 +73,7 @@ def test_successful_cycle_resets_failure_counter():
 
     sequence = ["fail", "fail", "ok", "ok", "fail", "stop"]
     state = {"i": 0}
+
     def _maybe_fail(*_):
         if state["i"] >= len(sequence):
             obs._stop = True
@@ -82,6 +84,7 @@ def test_successful_cycle_resets_failure_counter():
             raise RuntimeError("cycle fail")
         if step == "stop":
             obs._stop = True
+
     obs.run_once = _maybe_fail
 
     with patch("daytrade.observatory.observer.time.sleep"):
