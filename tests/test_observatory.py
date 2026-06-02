@@ -58,11 +58,51 @@ def test_db_bot_run_lifecycle(tmp_path):
 
 
 def test_db_recovers_dangling_runs(tmp_path):
+    """Only runs whose PID is no longer alive should be marked crashed —
+    a sibling process that's still running must not be clobbered."""
+    import os
     db = _db(tmp_path)
-    db.start_bot_run(pid=1)  # left 'running'
+    # PIDs above 4_000_000 are outside the default Linux/macOS PID space.
+    dead_pid = 4_000_001
+    while True:
+        try:
+            os.kill(dead_pid, 0)
+            dead_pid += 1
+        except (ProcessLookupError, OSError):
+            break
+    db.start_bot_run(pid=dead_pid)
     crashed = db.mark_dangling_runs_crashed()
     assert crashed == 1
     assert db.current_bot_run()["status"] == "crashed"
+    db.close()
+
+
+def test_db_keeps_alive_runs_running(tmp_path):
+    """A still-alive sibling PID must NOT be marked crashed when a
+    different process calls mark_dangling_runs_crashed (this was the
+    bug that took the live bot's dashboard offline)."""
+    import os
+    db = _db(tmp_path)
+    db.start_bot_run(pid=os.getpid())  # ourselves — definitely alive
+    crashed = db.mark_dangling_runs_crashed()
+    assert crashed == 0
+    assert db.current_bot_run()["status"] == "running"
+    db.close()
+
+
+def test_heartbeat_resurrects_a_spuriously_crashed_row(tmp_path):
+    """A heartbeat is the definitive 'I am alive' signal — it must
+    restore status to 'running' and clear stopped_ts so the dashboard
+    recovers automatically from a spurious crash mark."""
+    db = _db(tmp_path)
+    run_id = db.start_bot_run(pid=1)
+    db.stop_bot_run(run_id, status="crashed")
+    assert db.current_bot_run()["status"] == "crashed"
+    db.heartbeat(run_id, cycles=42)
+    row = db.current_bot_run()
+    assert row["status"] == "running"
+    assert row["stopped_ts"] is None
+    assert row["cycles"] == 42
     db.close()
 
 

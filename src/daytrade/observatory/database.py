@@ -216,12 +216,35 @@ class ObservatoryDB:
     # -- bot run lifecycle ---------------------------------------------------
 
     def mark_dangling_runs_crashed(self) -> int:
-        """Any run still 'running' from a previous process is marked crashed."""
-        cur = self._conn.execute(
-            "UPDATE bot_runs SET status='crashed', stopped_ts=? "
-            "WHERE status='running'", (_now(),))
+        """Mark runs as crashed ONLY when their PID is no longer alive.
+
+        The old version marked every ``running`` row regardless of PID
+        liveness, which would clobber a sibling bot (e.g. ``daytrade
+        learn``) any time a different ``daytrade`` invocation started.
+        """
+        import os as _os
+        rows = self._conn.execute(
+            "SELECT id, pid FROM bot_runs WHERE status='running'"
+        ).fetchall()
+        crashed = 0
+        for row_id, pid in rows:
+            alive = False
+            try:
+                if pid:
+                    _os.kill(int(pid), 0)  # signal 0 = liveness probe
+                    alive = True
+            except ProcessLookupError:
+                alive = False
+            except (PermissionError, OSError):
+                # Another user's process or kernel says yes — treat as alive.
+                alive = True
+            if not alive:
+                self._conn.execute(
+                    "UPDATE bot_runs SET status='crashed', stopped_ts=? "
+                    "WHERE id=?", (_now(), row_id))
+                crashed += 1
         self._conn.commit()
-        return cur.rowcount
+        return crashed
 
     def start_bot_run(self, pid: int) -> int:
         now = _now()
@@ -230,8 +253,12 @@ class ObservatoryDB:
             "status": "running", "pid": pid})
 
     def heartbeat(self, run_id: int, cycles: int) -> None:
+        """A heartbeat is the definitive 'I am alive' signal: it must
+        restore status to 'running' and clear any spurious stopped_ts
+        that a sibling-process race may have set."""
         self._conn.execute(
-            "UPDATE bot_runs SET last_heartbeat_ts=?, cycles=? WHERE id=?",
+            "UPDATE bot_runs SET last_heartbeat_ts=?, cycles=?, "
+            "status='running', stopped_ts=NULL WHERE id=?",
             (_now(), cycles, run_id))
         self._conn.commit()
 
