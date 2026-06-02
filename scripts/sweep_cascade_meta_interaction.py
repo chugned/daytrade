@@ -82,8 +82,23 @@ def _build_per_symbol_frame(candles: List[OHLCV], config: AppConfig) -> Optional
     return joined
 
 
+def _score_test_frame(model: MetaLabelModel, test_df: pd.DataFrame) -> Optional[pd.Series]:
+    """Vectorised predict_proba over the test slice's feature rows."""
+    feature_cols = model.feature_names
+    if not all(c in test_df.columns for c in feature_cols):
+        return None
+    X_test = test_df[feature_cols].to_numpy(dtype=float)
+    classes = list(model._pipeline.classes_)
+    proba_all = model._pipeline.predict_proba(X_test)
+    if 1 in classes:
+        return pd.Series(proba_all[:, classes.index(1)], index=test_df.index)
+    return pd.Series(1.0 if classes[0] == 1 else 0.0, index=test_df.index)
+
+
 def _evaluate_symbol(symbol: str, candles: List[OHLCV], config: AppConfig,
                      gate_multiple: float, cost_bps: float) -> Optional[Dict]:
+    """Per-symbol training: trains a fresh meta-model on this symbol's
+    70% only. Stricter test than production (which pools across symbols)."""
     frame = _build_per_symbol_frame(candles, config)
     if frame is None or len(frame) < 200:
         return None
@@ -92,24 +107,14 @@ def _evaluate_symbol(symbol: str, candles: List[OHLCV], config: AppConfig,
     if len(train_df) < 100 or len(test_df) < 30:
         return None
 
-    # Train a fresh meta-model on the train slice (per-symbol scope).
     model = MetaLabelModel()
     train_result = model.train([candles[: int(len(candles) * 0.7)]], config)
     if train_result is None or not model.is_trained:
         return None
 
-    feature_cols = model.feature_names
-    if not all(c in test_df.columns for c in feature_cols):
+    proba = _score_test_frame(model, test_df)
+    if proba is None:
         return None
-
-    # Score the held-out slice in one batch (predict_proba vectorised).
-    X_test = test_df[feature_cols].to_numpy(dtype=float)
-    classes = list(model._pipeline.classes_)
-    proba_all = model._pipeline.predict_proba(X_test)
-    if 1 in classes:
-        proba = pd.Series(proba_all[:, classes.index(1)], index=test_df.index)
-    else:
-        proba = pd.Series(1.0 if classes[0] == 1 else 0.0, index=test_df.index)
 
     metrics = analyze_cascade_meta_interaction(
         cascade_exhaustion=test_df["cascade_exhaustion"].astype(int),
@@ -129,6 +134,59 @@ def _evaluate_symbol(symbol: str, candles: List[OHLCV], config: AppConfig,
     }
 
 
+def _evaluate_pooled(candles_by_symbol: Dict[str, List[OHLCV]],
+                     config: AppConfig, gate_multiple: float,
+                     cost_bps: float) -> List[Dict]:
+    """Pooled training: trains ONE meta-model on the union of every
+    symbol's first 70%, then scores each symbol's last 30% with it.
+    Mirrors how the live observer trains (single pooled model)."""
+    # Build per-symbol frames so we can chronologically split each one
+    per_symbol: Dict[str, tuple] = {}
+    pooled_train_candles: List[List[OHLCV]] = []
+    for sym, candles in candles_by_symbol.items():
+        frame = _build_per_symbol_frame(candles, config)
+        if frame is None or len(frame) < 200:
+            continue
+        train_df, test_df = _train_test_split(frame, train_frac=0.7)
+        if len(train_df) < 100 or len(test_df) < 30:
+            continue
+        per_symbol[sym] = (train_df, test_df)
+        cut = int(len(candles) * 0.7)
+        pooled_train_candles.append(candles[:cut])
+
+    if not per_symbol:
+        return []
+
+    # One pooled model
+    model = MetaLabelModel()
+    train_result = model.train(pooled_train_candles, config)
+    if train_result is None or not model.is_trained:
+        return []
+
+    results: List[Dict] = []
+    for sym, (_train_df, test_df) in per_symbol.items():
+        proba = _score_test_frame(model, test_df)
+        if proba is None:
+            continue
+        metrics = analyze_cascade_meta_interaction(
+            cascade_exhaustion=test_df["cascade_exhaustion"].astype(int),
+            meta_label=test_df["meta_label"].astype(int),
+            meta_proba=proba,
+            forward_return_bps=test_df["forward_return_bps"].astype(float),
+            base_win_rate=train_result.base_win_rate,
+            gate_multiple=gate_multiple,
+            round_trip_cost_bps=cost_bps,
+        )
+        results.append({
+            "symbol": sym,
+            "n_train": train_result.samples,  # pooled total
+            "base_win_rate": train_result.base_win_rate,
+            "n_test": len(test_df),
+            "metrics": metrics,
+        })
+    return results
+
+
 def _fmt_pct(v: Optional[float]) -> str:
     return "—" if v is None else f"{v * 100:5.1f}%"
 
@@ -145,7 +203,7 @@ def _print_symbol_table(result: Dict, fh) -> None:
     fh.write(f"\n## {sym}\n\n")
     fh.write(f"- training: n={n_train}, base_win_rate={base * 100:.1f}%\n")
     fh.write(f"- test:     n={n_test} (chronological 70/30 split)\n\n")
-    fh.write("| Slice | n | win rate | mean ret (bps) | net of 24bp cost | sharpe-like |\n")
+    fh.write("| Slice | n | win rate | mean ret (bps) | net of cost | sharpe-like |\n")
     fh.write("| --- | ---: | ---: | ---: | ---: | ---: |\n")
     for slice_name, m in result["metrics"].items():
         fh.write(
@@ -156,40 +214,42 @@ def _print_symbol_table(result: Dict, fh) -> None:
         )
 
 
-def _aggregate_verdict(results: List[Dict]) -> str:
-    """One-paragraph verdict comparing meta_gated vs cascade_and_gated."""
-    n_clear_all = sum(
-        1 for r in results
-        if (r["metrics"]["meta_gated"].mean_return_net_bps or 0) > 0
-    )
-    n_clear_cag = sum(
-        1 for r in results
-        if (r["metrics"]["cascade_and_gated"].mean_return_net_bps or 0) > 0
-    )
+def _aggregate_verdict(results: List[Dict], cost_bps: float) -> str:
+    """Compact verdict comparing meta_gated vs cascade_or_gated (UNION)
+    and vs cascade_and_gated (intersection)."""
     n = len(results)
-    lift_count = 0
-    for r in results:
-        g = r["metrics"]["meta_gated"]
-        cg = r["metrics"]["cascade_and_gated"]
-        if (g.mean_return_net_bps is not None
-                and cg.mean_return_net_bps is not None
-                and cg.n >= 5
-                and cg.mean_return_net_bps > g.mean_return_net_bps):
-            lift_count += 1
+
+    def _net_pos(slice_name):
+        return sum(
+            1 for r in results
+            if (r["metrics"][slice_name].mean_return_net_bps or 0) > 0
+        )
+
+    def _union_lift(min_events: int = 5):
+        """Symbols where union beats meta-gate alone on >= min_events."""
+        out = 0
+        for r in results:
+            g = r["metrics"]["meta_gated"]
+            u = r["metrics"]["cascade_or_gated"]
+            if (g.mean_return_net_bps is not None
+                    and u.mean_return_net_bps is not None
+                    and u.n >= min_events
+                    and u.mean_return_net_bps > g.mean_return_net_bps):
+                out += 1
+        return out
+
     return (
         f"\n## Aggregate verdict\n\n"
-        f"- {n_clear_all}/{n} symbols clear net cost with the **meta-gate alone**.\n"
-        f"- {n_clear_cag}/{n} symbols clear net cost with **cascade ∩ gated**.\n"
-        f"- {lift_count}/{n} symbols show **cascade-and-gated > meta-gated** (positive interaction)"
-        f" on ≥5 events.\n\n"
-        f"If cascade-and-gated dominates more often than not — *and* the per-symbol "
-        f"event counts are non-trivial — the recommendation is to either (a) raise "
-        f"``meta_label_edge_multiple`` selectively when ``cascade_exhaustion=1`` "
-        f"(a bonus gate), or (b) admit cascade-exhaustion bars even when the meta "
-        f"gate would normally block, *only* in symbols where the lift is consistent.\n\n"
-        f"If cascade-and-gated does NOT consistently dominate, the meta-model is "
-        f"likely already extracting whatever signal cascade exposure provides — no "
-        f"additional gate logic warranted.\n"
+        f"_Cost threshold: {cost_bps:.1f} bps round-trip_\n\n"
+        f"| Slice | symbols clearing net cost |\n"
+        f"| --- | ---: |\n"
+        f"| `all` (no filter) | {_net_pos('all')}/{n} |\n"
+        f"| `cascade_exhaustion` alone | {_net_pos('cascade_exhaustion')}/{n} |\n"
+        f"| `meta_gated` (current live rule) | {_net_pos('meta_gated')}/{n} |\n"
+        f"| `cascade_and_gated` (intersection) | {_net_pos('cascade_and_gated')}/{n} |\n"
+        f"| `cascade_or_gated` (UNION — candidate live rule) | {_net_pos('cascade_or_gated')}/{n} |\n\n"
+        f"- {_union_lift()}/{n} symbols show **cascade-OR-gated > meta-gated** "
+        f"on ≥5 events (the P5-2 question).\n"
     )
 
 
@@ -205,6 +265,11 @@ def main() -> int:
                    help="Round-trip cost in bps for the 'net' column")
     p.add_argument("--out", default="docs/CASCADE-META-INTERACTION-FINDINGS.md",
                    help="Markdown output path")
+    p.add_argument("--training", choices=("per_symbol", "pooled"),
+                   default="per_symbol",
+                   help="per_symbol = per-symbol meta-model (default); "
+                        "pooled = one model on the union of training slices "
+                        "(matches live observer)")
     args = p.parse_args()
 
     symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
@@ -212,26 +277,43 @@ def main() -> int:
 
     print(f"# cascade × meta-gate interaction sweep", file=sys.stderr)
     print(f"# symbols={','.join(symbols)} days={args.days} "
+          f"training={args.training} "
           f"gate_multiple={args.gate_multiple} cost_bps={args.cost_bps}",
           file=sys.stderr)
 
-    results: List[Dict] = []
+    # Pull all candles up front so both modes share the same input
+    candles_by_symbol: Dict[str, List[OHLCV]] = {}
     for sym in symbols:
         print(f"  {sym}: pulling cached candles...", file=sys.stderr)
         try:
-            candles = _pull(sym, args.days)
+            candles_by_symbol[sym] = _pull(sym, args.days)
         except Exception as exc:  # noqa: BLE001
             print(f"    WARN  {sym}: {exc}", file=sys.stderr)
             continue
-        print(f"  {sym}: training + scoring (n_bars={len(candles)})...",
+
+    if not candles_by_symbol:
+        print("ERROR: no symbols produced candles", file=sys.stderr)
+        return 1
+
+    results: List[Dict] = []
+    if args.training == "per_symbol":
+        for sym, candles in candles_by_symbol.items():
+            print(f"  {sym}: per-symbol train + score (n_bars={len(candles)})...",
+                  file=sys.stderr)
+            r = _evaluate_symbol(sym, candles, config,
+                                 gate_multiple=args.gate_multiple,
+                                 cost_bps=args.cost_bps)
+            if r is None:
+                print(f"    SKIP  {sym}: insufficient data or training",
+                      file=sys.stderr)
+                continue
+            results.append(r)
+    else:  # pooled
+        print(f"  pooled training on {len(candles_by_symbol)} symbols...",
               file=sys.stderr)
-        r = _evaluate_symbol(sym, candles, config,
-                             gate_multiple=args.gate_multiple,
-                             cost_bps=args.cost_bps)
-        if r is None:
-            print(f"    SKIP  {sym}: insufficient data or training", file=sys.stderr)
-            continue
-        results.append(r)
+        results = _evaluate_pooled(candles_by_symbol, config,
+                                   gate_multiple=args.gate_multiple,
+                                   cost_bps=args.cost_bps)
 
     if not results:
         print("ERROR: no symbols produced results", file=sys.stderr)
@@ -241,16 +323,19 @@ def main() -> int:
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w") as fh:
-        fh.write("# CASCADE × meta-gate interaction findings (P4-1)\n\n")
+        fh.write("# CASCADE × meta-gate interaction findings\n\n")
         fh.write(f"- Symbols: {', '.join(r['symbol'] for r in results)}\n")
         fh.write(f"- History: last {args.days} days × 1m candles per symbol\n")
         fh.write(f"- Split: chronological 70% train / 30% test\n")
+        fh.write(f"- Training mode: **{args.training}**"
+                 + (" (matches live observer)" if args.training == "pooled" else "")
+                 + "\n")
         fh.write(f"- Gate threshold: ``proba > base_win_rate × {args.gate_multiple}``\n")
         fh.write(f"- Round-trip cost: {args.cost_bps:.1f} bps\n")
         fh.write(f"- Generated by: ``scripts/sweep_cascade_meta_interaction.py``\n")
         for r in results:
             _print_symbol_table(r, fh)
-        fh.write(_aggregate_verdict(results))
+        fh.write(_aggregate_verdict(results, args.cost_bps))
     print(f"wrote {out_path}", file=sys.stderr)
     return 0
 

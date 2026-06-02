@@ -33,7 +33,17 @@ class SliceMetrics:
     sharpe_like: Optional[float]         # mean / std (sqrt(n) NOT applied)
 
 
-_SLICES = ("all", "cascade_exhaustion", "meta_gated", "cascade_and_gated")
+#: ``cascade_or_gated`` is the UNION (meta-gate OR cascade-exhaustion)
+#: — the candidate "cascade override" admission rule from P5-2. The
+#: diff vs ``meta_gated`` is what the override would add on top of
+#: today's gate.
+_SLICES = (
+    "all",
+    "cascade_exhaustion",
+    "meta_gated",
+    "cascade_and_gated",
+    "cascade_or_gated",
+)
 
 
 def analyze_cascade_meta_interaction(
@@ -98,6 +108,10 @@ def analyze_cascade_meta_interaction(
         "cascade_exhaustion": cascade_mask,
         "meta_gated": gated_mask,
         "cascade_and_gated": cascade_mask & gated_mask,
+        # UNION = current gate AND any cascade-exhaustion bar that the
+        # meta-gate would have blocked. This is the candidate live rule
+        # from P5-2 ("cascade override").
+        "cascade_or_gated": cascade_mask | gated_mask,
     }
 
     out: Dict[str, SliceMetrics] = {}

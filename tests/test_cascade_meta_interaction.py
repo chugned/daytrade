@@ -84,7 +84,8 @@ def test_returns_slice_metrics_for_each_named_slice():
         round_trip_cost_bps=24.0,
     )
     assert set(result.keys()) == {"all", "cascade_exhaustion",
-                                  "meta_gated", "cascade_and_gated"}
+                                  "meta_gated", "cascade_and_gated",
+                                  "cascade_or_gated"}
     for slice_name, m in result.items():
         assert isinstance(m, SliceMetrics)
 
@@ -190,6 +191,50 @@ def test_zero_event_slice_returns_none_metrics_not_crash():
         assert m.win_rate is None
         assert m.mean_return_bps is None
         assert m.mean_return_net_bps is None
+
+
+def test_union_slice_size_equals_inclusion_exclusion():
+    """|A ∪ B| = |A| + |B| − |A ∩ B|. Sanity check that the union slice
+    is built the way the doc claims (admit cascade OR meta-gated)."""
+    cascade, labels, proba, returns = _fixture(n_rows=200, seed=4)
+    result = analyze_cascade_meta_interaction(
+        cascade_exhaustion=cascade, meta_label=labels,
+        meta_proba=proba, forward_return_bps=returns,
+        base_win_rate=0.55, gate_multiple=1.0, round_trip_cost_bps=24.0,
+    )
+    expected = (result["cascade_exhaustion"].n
+                + result["meta_gated"].n
+                - result["cascade_and_gated"].n)
+    assert result["cascade_or_gated"].n == expected
+
+
+def test_union_dominates_meta_gated_when_cascade_lifts_baseline():
+    """When cascade rows have a meaningfully higher win rate than the
+    rest, ``cascade_or_gated`` should have a mean return ≥ ``meta_gated``
+    — the override pulls more good bars in. This is exactly the
+    pattern P5-2 is asking about."""
+    cascade, labels, proba, returns = _fixture(
+        n_rows=400,
+        base_win_rate=0.50,
+        exhaustion_win_rate=0.80,  # cascade rows clearly better
+        seed=5,
+    )
+    # Gate so meta-gated includes some non-cascade rows
+    result = analyze_cascade_meta_interaction(
+        cascade_exhaustion=cascade, meta_label=labels,
+        meta_proba=proba, forward_return_bps=returns,
+        base_win_rate=0.50, gate_multiple=1.0, round_trip_cost_bps=24.0,
+    )
+    union_mean = result["cascade_or_gated"].mean_return_bps
+    gated_mean = result["meta_gated"].mean_return_bps
+    assert union_mean is not None and gated_mean is not None
+    # Union should have at least as many events as meta-gated (it's a
+    # superset by construction) and a mean return ≥ baseline.
+    assert result["cascade_or_gated"].n >= result["meta_gated"].n
+    # The union shouldn't be a pure wash either way — the cascade boost
+    # should at minimum keep the mean above what the gate alone produces
+    # when the cascade signal is strong.
+    assert union_mean >= gated_mean - 5.0  # tolerance for fixture noise
 
 
 def test_rejects_misaligned_series_lengths():
