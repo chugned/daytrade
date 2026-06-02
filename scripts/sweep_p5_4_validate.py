@@ -39,12 +39,10 @@ from daytrade.research.cascade_meta_interaction import (
 )
 from daytrade.research.cost_horizon import recompute_net
 from daytrade.research.history import download_history
-
-# Import the cached-frame builder from the existing sweep
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from sweep_cascade_meta_interaction import (  # noqa: E402
-    _build_per_symbol_frame, _load_or_build_frame, _score_test_frame,
-    _train_test_split,
+from daytrade.research.sweep_helpers import (
+    load_or_build_frame,
+    score_test_frame,
+    train_test_split,
 )
 
 
@@ -66,11 +64,11 @@ def _evaluate_pooled_at_horizon(symbols: List[str], horizon: int, days: int,
     per_symbol: Dict[str, tuple] = {}
     pooled_train_candles: List[List[OHLCV]] = []
     for sym in symbols:
-        frame = _load_or_build_frame(sym, days, config, use_cache=True)
+        frame = load_or_build_frame(sym, days, config, use_cache=True)
         if frame is None or len(frame) < 200:
             print(f"    SKIP {sym}: insufficient frame", file=sys.stderr)
             continue
-        train_df, test_df = _train_test_split(frame, train_frac=0.7)
+        train_df, test_df = train_test_split(frame, train_frac=0.7)
         if len(train_df) < 100 or len(test_df) < 30:
             print(f"    SKIP {sym}: split too small", file=sys.stderr)
             continue
@@ -96,7 +94,7 @@ def _evaluate_pooled_at_horizon(symbols: List[str], horizon: int, days: int,
 
     results = []
     for sym, (_, test_df) in per_symbol.items():
-        proba = _score_test_frame(model, test_df)
+        proba = score_test_frame(model, test_df)
         if proba is None:
             continue
         for gate_mult in gate_multiples:
