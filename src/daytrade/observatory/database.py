@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -240,9 +241,39 @@ class ObservatoryDB:
         # the dashboard's "Database" view.
         self._writelog_path = _REPO_ROOT / "logs" / "db-writes.log"
         self._writelog_path.parent.mkdir(parents=True, exist_ok=True)
+        # SPEED: when > 0, ``_insert`` and per-row writers skip the
+        # commit so the caller's ``with db.batch():`` block flushes
+        # once at exit. ~10-50x faster on SQLite WAL than N small
+        # transactions. Symmetric with nighttrade.
+        self._batch_depth = 0
 
     def close(self) -> None:
         self._conn.close()
+
+    @contextmanager
+    def batch(self):
+        """Defer commits across a block of writes. One commit at exit.
+
+        Nestable — only outermost commits. On exception, rolls back."""
+        self._batch_depth += 1
+        try:
+            yield
+            if self._batch_depth == 1:
+                self._conn.commit()
+        except Exception:
+            if self._batch_depth == 1:
+                try:
+                    self._conn.rollback()
+                except Exception:  # noqa: BLE001
+                    pass
+            raise
+        finally:
+            self._batch_depth -= 1
+
+    def _commit_or_defer(self) -> None:
+        """Commit unless we're inside a ``db.batch()`` block."""
+        if self._batch_depth == 0:
+            self._conn.commit()
 
     # -- inserts -------------------------------------------------------------
 
@@ -267,13 +298,13 @@ class ObservatoryDB:
             f"ON CONFLICT(prediction_id) DO UPDATE SET {updates}",
             list(cols.values()),
         )
-        self._conn.commit()
+        self._commit_or_defer()
         self._writelog("UPSERT", "prediction_outcomes", prediction_id, f)
 
     def mark_prediction_evaluated(self, prediction_id: int) -> None:
         self._conn.execute("UPDATE predictions SET evaluated=1 WHERE id=?",
                             (prediction_id,))
-        self._conn.commit()
+        self._commit_or_defer()
 
     def upsert_outcome_and_mark_evaluated(
             self, prediction_id: int, **f: Any) -> None:
@@ -299,7 +330,7 @@ class ObservatoryDB:
             self._conn.execute(
                 "UPDATE predictions SET evaluated=1 WHERE id=?",
                 (prediction_id,))
-            self._conn.commit()
+            self._commit_or_defer()
         except Exception:
             self._conn.rollback()
             raise
@@ -332,7 +363,7 @@ class ObservatoryDB:
             except sqlite3.OperationalError:
                 # table may not exist on older schemas; skip
                 deleted[table] = 0
-        self._conn.commit()
+        self._commit_or_defer()
         try:
             self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             self._conn.execute("PRAGMA optimize")
@@ -353,7 +384,7 @@ class ObservatoryDB:
             "slippage=?, status='closed' WHERE id=?",
             (ts_close or _now(), exit_price, pnl, fees, slippage, trade_id),
         )
-        self._conn.commit()
+        self._commit_or_defer()
         self._writelog("UPDATE", "paper_trades", trade_id,
                         {"event": "closed", "exit_price": exit_price,
                          "pnl": pnl})
@@ -405,7 +436,7 @@ class ObservatoryDB:
                     "UPDATE bot_runs SET status='crashed', stopped_ts=? "
                     "WHERE id=?", (_now(), row_id))
                 crashed += 1
-        self._conn.commit()
+        self._commit_or_defer()
         return crashed
 
     def start_bot_run(self, pid: int) -> int:
@@ -422,13 +453,13 @@ class ObservatoryDB:
             "UPDATE bot_runs SET last_heartbeat_ts=?, cycles=?, "
             "status='running', stopped_ts=NULL WHERE id=?",
             (_now(), cycles, run_id))
-        self._conn.commit()
+        self._commit_or_defer()
 
     def stop_bot_run(self, run_id: int, status: str = "stopped") -> None:
         self._conn.execute(
             "UPDATE bot_runs SET status=?, stopped_ts=? WHERE id=?",
             (status, _now(), run_id))
-        self._conn.commit()
+        self._commit_or_defer()
 
     # -- learning sessions ---------------------------------------------------
 
@@ -445,7 +476,7 @@ class ObservatoryDB:
         self._conn.execute(
             "UPDATE learning_sessions SET cycles_completed=?, status=?, "
             "last_update_ts=? WHERE id=?", (cycles, status, _now(), session_id))
-        self._conn.commit()
+        self._commit_or_defer()
 
     def current_learning_session(self) -> Optional[Dict[str, Any]]:
         return self._one("SELECT * FROM learning_sessions "
@@ -463,7 +494,7 @@ class ObservatoryDB:
             f"INSERT INTO daily_metrics ({names}) VALUES ({placeholders}) "
             f"ON CONFLICT(day_date) DO UPDATE SET {updates}",
             list(cols.values()))
-        self._conn.commit()
+        self._commit_or_defer()
 
     def daily_metrics(self) -> List[Dict[str, Any]]:
         return self._all("SELECT * FROM daily_metrics ORDER BY day_date")
@@ -656,7 +687,7 @@ class ObservatoryDB:
         cur = self._conn.execute(
             f"INSERT INTO {table} ({names}) VALUES ({placeholders})",
             list(row.values()))
-        self._conn.commit()
+        self._commit_or_defer()
         rowid = int(cur.lastrowid)
         self._writelog("INSERT", table, rowid, row)
         return rowid

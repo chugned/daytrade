@@ -276,26 +276,31 @@ class Observer:
         # both thread-safe.
         self._warm_feed_parallel(watch, now)
 
-        for idx, symbol in enumerate(watch, start=1):
-            self._set_now(
-                "Running technical analysis", symbol, now, symbol_index=idx, symbol_total=len(watch)
-            )
-            try:
-                assessment = self._observe_symbol(
-                    symbol, now, memory, recent_accuracy, equity, calibrator
+        # SPEED — db.batch() defers commits across the per-symbol loop.
+        # Each _observe_symbol emits multiple INSERTs; batching them
+        # into one transaction is dramatically faster on SQLite WAL.
+        # Symmetric with nighttrade.
+        with self.db.batch():
+            for idx, symbol in enumerate(watch, start=1):
+                self._set_now(
+                    "Running technical analysis", symbol, now, symbol_index=idx, symbol_total=len(watch)
                 )
-            except Exception as exc:  # noqa: BLE001 - one symbol must not kill the cycle
-                self.db.insert_error(f"observe:{symbol}", repr(exc))
-                self._errors_this_cycle += 1
-                _log.exception("error observing %s", symbol)
-                continue
-            summary.symbols_observed += 1
-            if assessment is not None:
-                assessments.append(assessment)
-                summary.tradeable += 1
-                if assessment.condition == "ILLIQUID":
-                    illiquid.append(symbol)
-            summary.predictions_made += 1
+                try:
+                    assessment = self._observe_symbol(
+                        symbol, now, memory, recent_accuracy, equity, calibrator
+                    )
+                except Exception as exc:  # noqa: BLE001 - one symbol must not kill the cycle
+                    self.db.insert_error(f"observe:{symbol}", repr(exc))
+                    self._errors_this_cycle += 1
+                    _log.exception("error observing %s", symbol)
+                    continue
+                summary.symbols_observed += 1
+                if assessment is not None:
+                    assessments.append(assessment)
+                    summary.tradeable += 1
+                    if assessment.condition == "ILLIQUID":
+                        illiquid.append(symbol)
+                summary.predictions_made += 1
 
         # Periodically retrain the meta-labelling model on pooled history.
         self._maybe_retrain_meta()
