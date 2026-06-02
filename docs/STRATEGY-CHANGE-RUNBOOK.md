@@ -1,5 +1,40 @@
 # Strategy-change runbook — IF P5-4 confirms
 
+> **⛔ DO NOT EXECUTE. Result invalidated 2026-06-02.**
+>
+> The equity-curve simulator (`scripts/simulate_winner.py`) re-ran
+> the headline P5-3 winning cell (BNB 240m gate=4.0) on a 90-day
+> window — the same window P5-4 was meant to use. Result on 90d:
+> **−60.85 bp/trade × 742 trades = −45,147 bp cumulative.** The
+> +30.87 bp/trade on the 30-day window matched, so the math is
+> right — but the strategy is **regime-dependent**, not a stable
+> edge. The recent 9-day held-out window happened to be a good
+> regime; older 27 days are bad. The "winner" was sample-window
+> luck.
+>
+> **Do not change the live config based on P5-3.** P5-4 was killed
+> early once the simulator surfaced this — a pooled-90d sweep
+> would have shown the same negative result more expensively.
+>
+> See `docs/COST-HORIZON-SWEEP-FINDINGS.md` for the original
+> per-cell P5-3 numbers (still accurate for the 30d window).
+> See `artifacts/equity_BNBUSDT_240m_g4.0.png` for the 90d
+> equity curve that killed the recommendation.
+>
+> The body of this runbook is preserved below as a **template**
+> for the NEXT strategy change that passes validation. Two
+> corrections to apply when re-using:
+>
+> 1. `max_hold_bars` schema default is **48**, not 30 (the table
+>    below was wrong).
+> 2. Restart procedure (`nohup … & disown`) orphans launchd
+>    supervision — write it as `launchctl kickstart -k <label>`
+>    instead, and add a `pgrep` verification step.
+
+---
+
+# Template (do not execute as-is — see banner above)
+
 This is the runbook for changing the live paper-bot config in
 response to the P5-3 + P5-4 cascade research thread. It is
 **only relevant if P5-4 produces a GO verdict** (see
