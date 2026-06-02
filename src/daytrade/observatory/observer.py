@@ -127,7 +127,15 @@ class Observer:
         # symbol -> open paper position {trade_id, qty, entry, stop, target}
         self._open: Dict[str, Dict[str, float]] = {}
         self._risk = RiskEngine(config.risk, self._starting_cash)
-        self._peak_equity = self._starting_cash
+        # QA-HIGH-2: seed peak from the DB so drawdown reports survive
+        # a restart honestly. Falls back to starting_cash when no
+        # history exists (fresh bot) OR when the DB doesn't expose the
+        # method (older schemas, unit-test MagicMock fakes).
+        try:
+            historic_peak = float(self.db.historical_peak_equity())
+        except (AttributeError, TypeError, ValueError, Exception):  # noqa: BLE001
+            historic_peak = 0.0
+        self._peak_equity = max(self._starting_cash, historic_peak)
         # Push notifier — picks Telegram / ntfy / log based on env vars.
         from ..ops import build_notifier, Level as _NotifyLevel
         self._notify = build_notifier()
@@ -456,9 +464,14 @@ class Observer:
                 continue
             if outcome is None:
                 continue
-            self.db.upsert_outcome(prediction["id"], **outcome)
+            # QA-HIGH-1: single transaction so a crash between the
+            # upsert and the evaluated flag does NOT cause re-work
+            # next cycle.
             if fully:
-                self.db.mark_prediction_evaluated(prediction["id"])
+                self.db.upsert_outcome_and_mark_evaluated(
+                    prediction["id"], **outcome)
+            else:
+                self.db.upsert_outcome(prediction["id"], **outcome)
             evaluated += 1
         return evaluated
 
@@ -538,6 +551,15 @@ class Observer:
                            f"day {day_number}", level="info")
             _log.info("day %d rolled up (%s): %s", day_number, day_date,
                       metric.get("status"))
+            # QA-HIGH-3: prune old high-volume tables + checkpoint the
+            # WAL so the DB doesn't grow ~16 MB/day forever. Best-effort.
+            try:
+                pruned = self.db.prune_old(days=30)
+                total = sum(pruned.values())
+                if total:
+                    _log.info("pruned %d old rows: %s", total, pruned)
+            except Exception as exc:  # noqa: BLE001
+                _log.warning("prune_old failed: %s", exc)
         except Exception as exc:  # noqa: BLE001 - rollover must not crash the loop
             self.db.insert_error("day_rollover", repr(exc))
 
@@ -551,12 +573,18 @@ class Observer:
     def _set_now(self, step: str, symbol: str, now: datetime,
                  done: bool = False, symbol_index: int = 0,
                  symbol_total: int = 0) -> None:
-        """Write the live 'what is it doing right now' state to data/now.json."""
+        """Write the live 'what is it doing right now' state to data/now.json.
+
+        QA-HIGH-4: write atomically via tempfile + os.replace so a
+        concurrent dashboard read never sees a truncated JSON. Before
+        this fix the dashboard's `_read_json` would intermittently get
+        ValueError and report 'idle' for one refresh cycle.
+        """
         try:
             next_cycle = (now + timedelta(seconds=self._interval)).isoformat() \
                 if done else None
             _NOW_PATH.parent.mkdir(parents=True, exist_ok=True)
-            _NOW_PATH.write_text(json.dumps({
+            payload = json.dumps({
                 "cycle": self._cycle,
                 "started_at": now.isoformat(),
                 "current_step": step,
@@ -568,7 +596,10 @@ class Observer:
                 "data_source": getattr(self.feed, "source", "simulated"),
                 "steps": CYCLE_STEPS,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
-            }), encoding="utf-8")
+            })
+            tmp_path = _NOW_PATH.with_suffix(".json.tmp")
+            tmp_path.write_text(payload, encoding="utf-8")
+            os.replace(tmp_path, _NOW_PATH)
         except OSError:  # pragma: no cover
             pass
 
@@ -687,7 +718,16 @@ class Observer:
         closed = 0
         max_hold = self.config.risk.max_hold_bars
         for symbol, pos in list(self._open.items()):
-            price = self.feed.price_at(symbol, now)
+            # QA-CRIT-1: a Binance hiccup in feed.price_at used to crash
+            # the whole cycle, leaving the rest of the open positions
+            # un-evaluated (stop-loss enforcement silently skipped).
+            # Fail-soft per-symbol and move on; the next cycle retries.
+            try:
+                price = self.feed.price_at(symbol, now)
+            except Exception as exc:  # noqa: BLE001
+                _log.warning("price_at(%s) failed; skipping management this "
+                             "cycle: %s", symbol, exc)
+                continue
             exit_price: Optional[float] = None
             if price <= pos["stop"]:
                 exit_price = pos["stop"]
@@ -737,10 +777,22 @@ class Observer:
 
     def _equity(self, now: datetime) -> float:
         """Simulated equity = cash + realised PnL + open unrealised PnL."""
-        realized = sum(t["pnl"] or 0.0 for t in self.db.closed_paper_trades())
+        # QA-HIGH-6: use SUM over the full table, not a 500-row window.
+        # After 500 closed trades the windowed approach silently
+        # under-reported realised PnL and broke equity / drawdown.
+        realized = self.db.total_realised_pnl()
         unrealized = 0.0
         for symbol, pos in self._open.items():
-            price = self.feed.price_at(symbol, now)
+            # QA-CRIT-1: a Binance hiccup in feed.price_at used to crash
+            # the whole cycle. Fall back to the entry price (treat the
+            # position as flat for this snapshot) so equity is still
+            # reportable. The next cycle will re-price normally.
+            try:
+                price = self.feed.price_at(symbol, now)
+            except Exception as exc:  # noqa: BLE001
+                _log.warning("price_at(%s) failed in equity calc; using "
+                             "entry as fallback: %s", symbol, exc)
+                price = pos["entry"]
             unrealized += (price - pos["entry"]) * pos["qty"]
         return self._starting_cash + realized + unrealized
 
@@ -779,11 +831,25 @@ class Observer:
 
     # -- the forever loop ----------------------------------------------------
 
+    #: QA-CRIT-4: act on consecutive_failures. Without these limits a
+    #: persistently-failing cycle (e.g. Binance returning 5xx for
+    #: hours) would loop forever — once per cycle (default 300s) it
+    #: would re-hit every endpoint, write a CRITICAL alert, and
+    #: contribute to API rate-limit pressure.
+    _BACKOFF_THRESHOLD = 3        # start exponential backoff after this many
+    _BACKOFF_MAX_SECONDS = 1800   # 30 min cap on extra sleep per cycle
+    _ABORT_THRESHOLD = 50         # after this many in a row, give up
+
     def run_forever(self, interval: int = 300) -> None:
         """Run cycles every ``interval`` seconds.
 
         Stops on a signal, or — in a learning session — once the configured
         observation window (e.g. 30 days) has fully elapsed.
+
+        If cycles fail repeatedly, exponential backoff kicks in after
+        ``_BACKOFF_THRESHOLD`` and the run aborts after
+        ``_ABORT_THRESHOLD`` consecutive failures — preventing a
+        permafail loop from hammering the data feed.
         """
         self._install_signal_handlers()
         self._interval = interval
@@ -809,10 +875,33 @@ class Observer:
                         LEVEL_CRITICAL, "crash",
                         f"observer cycle crashed: {exc!r}",
                         datetime.now(timezone.utc)))
+                    # Abort outright after sustained failure — preserves
+                    # the upstream data feed from a hot loop and signals
+                    # to watchdogs that this run is unhealthy.
+                    if consecutive_failures >= self._ABORT_THRESHOLD:
+                        _log.error(
+                            "%d consecutive cycle failures — aborting run; "
+                            "watchdog can restart cleanly",
+                            consecutive_failures)
+                        self._stop = True
+                        break
+                # Backoff: extra sleep on top of `interval` once we
+                # cross the threshold, capped at _BACKOFF_MAX_SECONDS.
+                extra_sleep = 0.0
+                if consecutive_failures > self._BACKOFF_THRESHOLD:
+                    n = consecutive_failures - self._BACKOFF_THRESHOLD
+                    extra_sleep = min(
+                        self._BACKOFF_MAX_SECONDS,
+                        interval * (2 ** min(n, 10)),
+                    )
+                    _log.warning("backoff: sleeping an extra %.0f s "
+                                 "(consecutive failures = %d)",
+                                 extra_sleep, consecutive_failures)
                 # Sleep in short slices so Ctrl+C is responsive.
                 slept = 0.0
-                while slept < interval and not self._stop:
-                    time.sleep(min(1.0, interval - slept))
+                total = interval + extra_sleep
+                while slept < total and not self._stop:
+                    time.sleep(min(1.0, total - slept))
                     slept += 1.0
         finally:
             final = "completed" if getattr(self, "_learning_complete", False) \

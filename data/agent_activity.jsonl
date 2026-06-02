@@ -1,0 +1,37 @@
+{"ts": "2026-06-02T00:29:56.530637+00:00", "agent": "claude-main", "kind": "roadmap", "summary": "QA roadmap published", "detail": "12 items, 4 CRITICAL"}
+{"ts": "2026-06-02T00:29:56.531266+00:00", "agent": "claude-main", "kind": "status", "summary": "Building mission-control activity feed visibility"}
+{"ts": "2026-06-02T00:29:56.531438+00:00", "agent": "qa-audit-1", "kind": "complete", "summary": "Full QA audit complete \u2014 5 CRITICAL, 11 HIGH, ~13 MEDIUM findings", "detail": "Top finding: feed.price_at calls in _equity/_manage_positions have no try/except; any Binance hiccup crashes the whole cycle when positions are open"}
+{"ts": "2026-06-02T00:31:03.442200+00:00", "agent": "claude-main", "kind": "complete", "summary": "Mission control activity feed + roadmap live", "detail": "Refresh phone \u2014 should see roadmap card + claude-main + qa-audit-1 nodes"}
+{"ts": "2026-06-02T00:31:15.772390+00:00", "agent": "claude-main", "kind": "status", "summary": "Starting QA-CRIT-1: price-fetch crash in _equity + _manage_positions"}
+{"ts": "2026-06-02T00:31:15.772839+00:00", "agent": "claude-main", "kind": "finding", "summary": "observer.py:743 calls feed.price_at with no try/except \u2014 Binance hiccup kills the cycle when positions are open"}
+{"ts": "2026-06-02T00:32:34.839289+00:00", "agent": "claude-main", "kind": "edit", "summary": "observer.py:_equity + _manage_positions wrapped in try/except", "detail": "Fail-soft per-symbol: equity uses entry as fallback; manage_positions skips and continues"}
+{"ts": "2026-06-02T00:32:34.839916+00:00", "agent": "claude-main", "kind": "edit", "summary": "tests/test_qa_crit1_price_fetch_resilience.py added \u2014 3 regression tests"}
+{"ts": "2026-06-02T00:32:34.840958+00:00", "agent": "claude-main", "kind": "complete", "summary": "QA-CRIT-1 fixed: price-fetch failures no longer crash the cycle"}
+{"ts": "2026-06-02T00:35:30.240586+00:00", "agent": "claude-main", "kind": "status", "summary": "Starting QA-CRIT-2: bound RealMarketFeed._minute_close LRU cap", "detail": "Same pattern as nighttrade 4.66 GB leak; cap at 50k entries"}
+{"ts": "2026-06-02T00:36:50.967275+00:00", "agent": "claude-main", "kind": "edit", "summary": "real_feed.py: _minute_close is now FIFO-capped OrderedDict (cap 50k)", "detail": "Eviction is O(1); existing keys re-promote on re-insert"}
+{"ts": "2026-06-02T00:36:50.968083+00:00", "agent": "claude-main", "kind": "edit", "summary": "tests/test_qa_crit2_minute_cache_bound.py \u2014 4 regression tests"}
+{"ts": "2026-06-02T00:36:50.969530+00:00", "agent": "claude-main", "kind": "complete", "summary": "QA-CRIT-2 fixed: memory leak vector bounded at 50k entries (~5MB)"}
+{"ts": "2026-06-02T00:37:00.507365+00:00", "agent": "claude-main", "kind": "status", "summary": "QA-CRIT-3: switch add_file_logging to rotating handler", "detail": "Currently 373 MB after 11 days \u2192 12 GB/year unrotated. attach_rotating_file_handler exists in ops/remote_log.py"}
+{"ts": "2026-06-02T00:38:30.753408+00:00", "agent": "claude-main", "kind": "edit", "summary": "runtime.py: add_file_logging now uses RotatingFileHandler (50MB x 5)"}
+{"ts": "2026-06-02T00:38:30.753908+00:00", "agent": "claude-main", "kind": "edit", "summary": "database.py: db-writes log size-rotated (50MB x 3 backups)"}
+{"ts": "2026-06-02T00:38:30.754354+00:00", "agent": "claude-main", "kind": "shell", "summary": "Archived oversized live logs: 373MB daytrade.log + 184MB db-writes.log \u2192 .archive-*"}
+{"ts": "2026-06-02T00:38:30.754535+00:00", "agent": "claude-main", "kind": "edit", "summary": "tests/test_qa_crit3_log_rotation.py \u2014 3 regression tests"}
+{"ts": "2026-06-02T00:38:30.755436+00:00", "agent": "claude-main", "kind": "complete", "summary": "QA-CRIT-3 fixed: log files bounded ~450 MB total ceiling, not unlimited"}
+{"ts": "2026-06-02T00:38:39.990888+00:00", "agent": "claude-main", "kind": "status", "summary": "QA-CRIT-4: consecutive_failures counter ignored \u2192 permafail loop hammers Binance"}
+{"ts": "2026-06-02T00:39:55.286482+00:00", "agent": "claude-main", "kind": "edit", "summary": "observer.run_forever: exponential backoff > 3 failures, abort at 50", "detail": "Permafail loop now self-limits instead of hammering Binance forever"}
+{"ts": "2026-06-02T00:39:55.287251+00:00", "agent": "claude-main", "kind": "edit", "summary": "tests/test_qa_crit4_consecutive_failures.py \u2014 3 regression tests"}
+{"ts": "2026-06-02T00:39:55.288264+00:00", "agent": "claude-main", "kind": "complete", "summary": "QA-CRIT-4 fixed: permafail loop self-limits with backoff + abort"}
+{"ts": "2026-06-02T00:40:10.067608+00:00", "agent": "claude-main", "kind": "status", "summary": "QA-HIGH-6: realised PnL silently wrong after 500 trades"}
+{"ts": "2026-06-02T00:40:57.762160+00:00", "agent": "claude-main", "kind": "edit", "summary": "db.total_realised_pnl() + observer uses it for equity calc", "detail": "QA-HIGH-6: realised PnL no longer capped at 500 trades"}
+{"ts": "2026-06-02T00:40:57.762711+00:00", "agent": "claude-main", "kind": "edit", "summary": "db.historical_peak_equity() + observer seeds _peak_equity from history", "detail": "QA-HIGH-2: drawdown reports now survive restart honestly"}
+{"ts": "2026-06-02T00:40:57.762915+00:00", "agent": "claude-main", "kind": "complete", "summary": "QA-HIGH-6 + QA-HIGH-2: PnL & drawdown correctness restored"}
+{"ts": "2026-06-02T00:42:57.559100+00:00", "agent": "claude-main", "kind": "edit", "summary": "Fixed two test fixtures to provide the new DB methods (mock returns 0.0)"}
+{"ts": "2026-06-02T00:43:08.015555+00:00", "agent": "claude-main", "kind": "status", "summary": "QA-HIGH-4+5: small ops fixes \u2014 atomic JSON write + httpx pool"}
+{"ts": "2026-06-02T00:44:07.823846+00:00", "agent": "claude-main", "kind": "edit", "summary": "observer._set_now: tempfile + os.replace for atomic now.json write"}
+{"ts": "2026-06-02T00:44:07.824682+00:00", "agent": "claude-main", "kind": "edit", "summary": "real_feed: single long-lived httpx.Client with .close()/.__del__"}
+{"ts": "2026-06-02T00:44:07.826304+00:00", "agent": "claude-main", "kind": "complete", "summary": "QA-HIGH-4+5: atomic now.json + HTTP connection reuse"}
+{"ts": "2026-06-02T00:44:17.621390+00:00", "agent": "claude-main", "kind": "status", "summary": "QA-HIGH-1+3: outcome-eval atomicity + DB pruning task"}
+{"ts": "2026-06-02T00:46:32.777283+00:00", "agent": "claude-main", "kind": "edit", "summary": "database.py: upsert_outcome_and_mark_evaluated (atomic) + prune_old + total_realised_pnl + historical_peak_equity"}
+{"ts": "2026-06-02T00:46:32.778064+00:00", "agent": "claude-main", "kind": "edit", "summary": "observer: uses atomic upsert; day_rollover now prunes old activity + checkpoints WAL"}
+{"ts": "2026-06-02T00:46:32.778245+00:00", "agent": "claude-main", "kind": "edit", "summary": "tests/test_qa_high_misc.py \u2014 7 regression tests"}
+{"ts": "2026-06-02T00:46:32.779903+00:00", "agent": "claude-main", "kind": "complete", "summary": "QA-HIGH-1+3: atomic outcomes + DB pruning + WAL checkpoint"}

@@ -1,0 +1,82 @@
+{
+  "session_goal": "QA hunt + fix all crash vulnerabilities found by the audit agent",
+  "current_phase": "QA-HIGH-1 + HIGH-3: atomic outcome eval + DB pruning/checkpoint",
+  "items": [
+    {
+      "id": "VIS-1",
+      "title": "Build activity feed + roadmap files",
+      "status": "complete",
+      "summary": "Append-only JSONL log of what Claude/agents are doing; mission control reads it"
+    },
+    {
+      "id": "VIS-2",
+      "title": "Wire activity feed into mission control UI",
+      "status": "complete",
+      "summary": "Add /api/activity endpoint + timeline panel to the page"
+    },
+    {
+      "id": "QA-CRIT-1",
+      "title": "Fix price-fetch crash in _equity/_manage_positions",
+      "status": "complete",
+      "severity": "CRITICAL",
+      "summary": "Wrap feed.price_at calls in try/except so a Binance hiccup doesn't crash the cycle when positions are open"
+    },
+    {
+      "id": "QA-CRIT-2",
+      "title": "Bound RealMarketFeed._minute_close",
+      "status": "complete",
+      "severity": "CRITICAL",
+      "summary": "Same pattern as nighttrade's 4.66 GB leak \u2014 cap with LRU"
+    },
+    {
+      "id": "QA-CRIT-3",
+      "title": "Rotating log handler for daytrade.log + db-writes.log",
+      "status": "complete",
+      "severity": "CRITICAL",
+      "summary": "Current 373 MB + 184 MB after 11 days; will hit disk full eventually"
+    },
+    {
+      "id": "QA-CRIT-4",
+      "title": "Act on consecutive_failures counter",
+      "status": "complete",
+      "severity": "CRITICAL",
+      "summary": "Currently incremented but ignored; bot in permafail loop hammers Binance"
+    },
+    {
+      "id": "QA-HIGH-1",
+      "title": "Atomic outcome eval transactions",
+      "status": "complete",
+      "severity": "HIGH"
+    },
+    {
+      "id": "QA-HIGH-2",
+      "title": "Seed _peak_equity from history on restart",
+      "status": "complete",
+      "severity": "HIGH"
+    },
+    {
+      "id": "QA-HIGH-3",
+      "title": "DB pruning + WAL checkpoint task",
+      "status": "complete",
+      "severity": "HIGH"
+    },
+    {
+      "id": "QA-HIGH-4",
+      "title": "Atomic now.json write (tempfile + rename)",
+      "status": "complete",
+      "severity": "HIGH"
+    },
+    {
+      "id": "QA-HIGH-5",
+      "title": "Reuse httpx.Client in RealMarketFeed",
+      "status": "complete",
+      "severity": "HIGH"
+    },
+    {
+      "id": "QA-HIGH-6",
+      "title": "Fix realised-PnL capped at 500 trades",
+      "status": "complete",
+      "severity": "HIGH"
+    }
+  ]
+}

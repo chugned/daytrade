@@ -178,6 +178,71 @@ class ObservatoryDB:
                             (prediction_id,))
         self._conn.commit()
 
+    def upsert_outcome_and_mark_evaluated(
+            self, prediction_id: int, **f: Any) -> None:
+        """QA-HIGH-1: do the outcome upsert AND the evaluated flag in
+        ONE transaction. Previously the two commits were separate, so a
+        crash between them re-evaluated the same prediction on the next
+        cycle (idempotent thanks to ON CONFLICT, but wasteful and
+        confusing in metrics).
+        """
+        cols = {"prediction_id": prediction_id, "evaluated_ts": _now(), **f}
+        placeholders = ", ".join("?" for _ in cols)
+        names = ", ".join(cols)
+        updates = ", ".join(f"{k}=excluded.{k}" for k in cols
+                            if k != "prediction_id")
+        try:
+            self._conn.execute("BEGIN")
+            self._conn.execute(
+                f"INSERT INTO prediction_outcomes ({names}) "
+                f"VALUES ({placeholders}) "
+                f"ON CONFLICT(prediction_id) DO UPDATE SET {updates}",
+                list(cols.values()),
+            )
+            self._conn.execute(
+                "UPDATE predictions SET evaluated=1 WHERE id=?",
+                (prediction_id,))
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+        self._writelog("UPSERT", "prediction_outcomes", prediction_id, f)
+
+    def prune_old(self, days: int = 30) -> Dict[str, int]:
+        """QA-HIGH-3: drop activity/snapshot/health rows older than
+        ``days`` days, then PRAGMA wal_checkpoint(TRUNCATE) to reclaim
+        WAL space. Safe to call from the daily roll-over; idempotent.
+
+        Returns a dict {table: rows_deleted} for logging.
+        """
+        cutoff = (
+            "datetime('now', '-' || ? || ' days')"
+        )
+        targets = {
+            "activity_events":   "ts",
+            "market_snapshots":  "ts",
+            "symbol_health":     "ts",
+            "now_states":        "ts",   # only present if table exists
+        }
+        deleted: Dict[str, int] = {}
+        for table, ts_col in targets.items():
+            try:
+                cur = self._conn.execute(
+                    f"DELETE FROM {table} WHERE {ts_col} < {cutoff}",
+                    (days,),
+                )
+                deleted[table] = cur.rowcount
+            except sqlite3.OperationalError:
+                # table may not exist on older schemas; skip
+                deleted[table] = 0
+        self._conn.commit()
+        try:
+            self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            self._conn.execute("PRAGMA optimize")
+        except sqlite3.OperationalError:
+            pass
+        return deleted
+
     def insert_paper_trade(self, **f: Any) -> int:
         return self._insert("paper_trades",
                             {"ts_open": f.get("ts_open", _now()),
@@ -358,6 +423,20 @@ class ObservatoryDB:
         return list(reversed(self._all(
             "SELECT * FROM safety_scores ORDER BY id DESC LIMIT ?", (limit,))))
 
+    def historical_peak_equity(self) -> float:
+        """The all-time MAX paper equity recorded in safety_scores.
+
+        QA-HIGH-2: on Observer restart, the in-memory `_peak_equity`
+        used to reset to `starting_cash`, so drawdown reports were
+        wrong (and KillSwitch tripping skewed) until the bot exceeded
+        its old peak. Seed from history instead.
+        """
+        row = self._conn.execute(
+            "SELECT MAX(equity) FROM safety_scores "
+            "WHERE equity IS NOT NULL").fetchone()
+        peak = row[0] if row and row[0] is not None else 0.0
+        return float(peak)
+
     def equity_curve(self, limit: int = 3000) -> List[Dict[str, Any]]:
         """Per-cycle paper-equity history (drives the accumulated-gain chart)."""
         return list(reversed(self._all(
@@ -418,8 +497,41 @@ class ObservatoryDB:
         return self._all("SELECT * FROM paper_trades WHERE status='closed' "
                          "ORDER BY id DESC LIMIT ?", (limit,))
 
+    def total_realised_pnl(self) -> float:
+        """SUM of pnl across ALL closed paper trades. O(N) once, but the
+        only correct number for equity calc after the 500-row recents
+        limit is crossed (QA-HIGH-6)."""
+        row = self._conn.execute(
+            "SELECT COALESCE(SUM(pnl), 0.0) FROM paper_trades "
+            "WHERE status='closed'").fetchone()
+        return float(row[0] if row else 0.0)
+
     def current_bot_run(self) -> Optional[Dict[str, Any]]:
-        return self._one("SELECT * FROM bot_runs ORDER BY id DESC LIMIT 1")
+        """The most relevant run record for the dashboard.
+
+        Prefers any row whose ``status='running'`` AND PID is alive, so
+        a short-lived sibling process (e.g. a 10-second smoke test of
+        ``daytrade shadow``) doesn't push the *actually-running* long
+        bot off the dashboard. Falls back to plain id-descending if no
+        alive running row exists.
+        """
+        import os as _os
+        for row in self._conn.execute(
+                "SELECT * FROM bot_runs WHERE status='running' "
+                "ORDER BY id DESC LIMIT 5").fetchall():
+            d = dict(row)
+            pid = d.get("pid")
+            if not pid:
+                continue
+            try:
+                _os.kill(int(pid), 0)
+                return d
+            except (ProcessLookupError, ValueError, TypeError):
+                continue
+            except (PermissionError, OSError):
+                return d  # exists but we can't signal — treat as alive
+        return self._one(
+            "SELECT * FROM bot_runs ORDER BY id DESC LIMIT 1")
 
     def recent_errors(self, limit: int = 50) -> List[Dict[str, Any]]:
         return self._all("SELECT * FROM errors ORDER BY id DESC LIMIT ?", (limit,))
@@ -442,6 +554,40 @@ class ObservatoryDB:
         self._writelog("INSERT", table, rowid, row)
         return rowid
 
+    #: QA-CRIT-3: size-based rotation for the write-log. 50 MB per
+    #: file × 3 backups = 200 MB ceiling, after which the oldest is
+    #: deleted. Previously this file grew without bound (184 MB after
+    #: 11 days; ~6 GB/year) and would eventually exhaust the disk.
+    _WRITELOG_MAX_BYTES = 50 * 1024 * 1024
+    _WRITELOG_BACKUP_COUNT = 3
+
+    def _rotate_writelog_if_needed(self) -> None:
+        """Best-effort manual size-rotation: if the file is over the
+        cap, shift writelog → writelog.1 → writelog.2 → … → writelog.N
+        (delete the last). Cheap; runs only when the cap is exceeded.
+        """
+        try:
+            if not self._writelog_path.exists():
+                return
+            if self._writelog_path.stat().st_size < self._WRITELOG_MAX_BYTES:
+                return
+            base = self._writelog_path
+            backups = self._WRITELOG_BACKUP_COUNT
+            # Drop the oldest backup if it exists.
+            oldest = base.with_suffix(base.suffix + f".{backups}")
+            if oldest.exists():
+                oldest.unlink()
+            # Shift .N-1 → .N, …, .1 → .2
+            for n in range(backups - 1, 0, -1):
+                src = base.with_suffix(base.suffix + f".{n}")
+                dst = base.with_suffix(base.suffix + f".{n + 1}")
+                if src.exists():
+                    src.rename(dst)
+            # Rotate the live file into .1
+            base.rename(base.with_suffix(base.suffix + ".1"))
+        except Exception:  # noqa: BLE001 — rotation must never crash callers
+            pass
+
     def _writelog(self, op: str, table: str, rowid: Any,
                   fields: Dict[str, Any]) -> None:
         """Append a one-line human record of a DB write (best-effort)."""
@@ -458,6 +604,8 @@ class ObservatoryDB:
             parts.append(f"{key}={value}")
         line = f"{_now()}  {op:<6} {table:<19} #{rowid}  {' '.join(parts)}\n"
         try:
+            # Cheap size check ~every write; only does I/O when needed.
+            self._rotate_writelog_if_needed()
             with self._writelog_path.open("a", encoding="utf-8") as fh:
                 fh.write(line)
         except Exception:  # noqa: BLE001 - logging must never break a write

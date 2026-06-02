@@ -47,13 +47,24 @@ def seed_everything(seed: int = 42) -> None:
     np.random.seed(seed)
 
 
-def add_file_logging(path: str) -> None:
-    """Attach a rotating-free file handler to the root logger.
+def add_file_logging(
+    path: str,
+    *,
+    max_bytes: int = 50 * 1024 * 1024,   # 50 MB per file
+    backup_count: int = 5,               # keep 5 rotations = 250 MB ceiling
+) -> None:
+    """Attach a SIZE-ROTATING file handler to the root logger.
 
-    Used by the long-running observer so a full run is captured in
-    ``logs/daytrade.log`` even when the console scrolls away.
+    QA-CRIT-3: the previous version used a plain ``FileHandler`` with
+    no rotation. After 11 days of observer uptime ``logs/daytrade.log``
+    reached 373 MB; at ~34 MB/day that would silently consume 12 GB/yr
+    and eventually fail ENOSPC writes (Python's logging swallows the
+    error). With these defaults the on-disk footprint is bounded at
+    ``(backup_count + 1) * max_bytes`` ≈ 300 MB total.
     """
     import os as _os
+    from logging.handlers import RotatingFileHandler  # noqa: PLC0415
+
     _os.makedirs(_os.path.dirname(path) or ".", exist_ok=True)
     root = logging.getLogger()
     abspath = _os.path.abspath(path)
@@ -61,7 +72,12 @@ def add_file_logging(path: str) -> None:
         if isinstance(handler, logging.FileHandler) and \
                 getattr(handler, "baseFilename", None) == abspath:
             return  # already attached
-    file_handler = logging.FileHandler(path, encoding="utf-8")
+    file_handler = RotatingFileHandler(
+        path,
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+        encoding="utf-8",
+    )
     file_handler.setFormatter(logging.Formatter(
         "%(asctime)s %(levelname)s %(name)s: %(message)s"))
     root.addHandler(file_handler)

@@ -18,6 +18,7 @@ permanently; recent candles are cached briefly.
 from __future__ import annotations
 
 import time
+from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -53,14 +54,46 @@ class RealMarketFeed:
 
     source = "real"
 
+    #: QA-CRIT-2: Cap the minute-close cache so it cannot grow without
+    #: bound. At ~35 symbols × 1440 minutes/day this would otherwise add
+    #: ~50k entries/day forever and is the analogue of the nighttrade
+    #: 4.66 GB process-RSS leak. 50k entries ≈ 5 MB of dict, comfortably
+    #: covers a full day of minute closes across the watchlist plus
+    #: prediction-evaluation horizons.
+    _MINUTE_CLOSE_CACHE_MAX = 50_000
+
     def __init__(self, timeout: float = 10.0, max_retries: int = 3) -> None:
         self._timeout = timeout
         self._max_retries = max(1, max_retries)
         # (symbol, minute_ms) -> close price. Closed candles never change,
-        # so this cache is permanent for the process lifetime.
-        self._minute_close: Dict[Tuple[str, int], float] = {}
+        # so the *value* is immutable per key; we evict by FIFO on size.
+        self._minute_close: "OrderedDict[Tuple[str, int], float]" = OrderedDict()
         # symbol -> (fetched_at_epoch, candles) short-TTL cache.
         self._recent: Dict[str, Tuple[float, List[OHLCV]]] = {}
+        # QA-HIGH-5: one long-lived httpx.Client reuses the TLS
+        # session + connection pool across the ~100 calls per cycle.
+        # Previously a fresh Client per `_get` meant a fresh TLS
+        # handshake per call (~50-150ms each), dominating cycle time.
+        self._client = httpx.Client(timeout=self._timeout)
+
+    def close(self) -> None:
+        """Release the underlying HTTP pool. Idempotent."""
+        try:
+            self._client.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def __del__(self) -> None:  # best-effort
+        self.close()
+
+    def _cache_minute_close(self, key: Tuple[str, int], price: float) -> None:
+        """Insert with FIFO eviction when over the cap. O(1)."""
+        cache = self._minute_close
+        if key in cache:
+            cache.move_to_end(key)  # mark as recent
+        cache[key] = price
+        while len(cache) > self._MINUTE_CLOSE_CACHE_MAX:
+            cache.popitem(last=False)  # evict oldest
 
     # -- HTTP ----------------------------------------------------------------
 
@@ -72,10 +105,9 @@ class RealMarketFeed:
             reraise=True,
         )
         def _do() -> Any:
-            with httpx.Client(timeout=self._timeout) as client:
-                resp = client.get(_BASE_URL + path, params=params)
-                resp.raise_for_status()
-                return resp.json()
+            resp = self._client.get(_BASE_URL + path, params=params)
+            resp.raise_for_status()
+            return resp.json()
 
         try:
             return _do()
@@ -111,7 +143,7 @@ class RealMarketFeed:
         self._recent[symbol] = (time.time(), candles)
         # Opportunistically warm the minute-close cache for free.
         for k in rows:
-            self._minute_close[(symbol, int(k[0]))] = float(k[4])
+            self._cache_minute_close((symbol, int(k[0])), float(k[4]))
         return candles[-n_bars:]
 
     def price_at(self, symbol: str, when: datetime) -> float:
@@ -128,7 +160,7 @@ class RealMarketFeed:
         if not rows:
             raise ExchangeError(f"no kline for {symbol} at {when.isoformat()}")
         close = float(rows[0][4])
-        self._minute_close[key] = close
+        self._cache_minute_close(key, close)
         return close
 
     def orderbook_at(self, symbol: str, as_of: datetime) -> OrderBookSnapshot:
