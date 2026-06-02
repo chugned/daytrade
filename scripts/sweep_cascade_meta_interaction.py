@@ -23,11 +23,14 @@ verdict to ``docs/CASCADE-META-INTERACTION-FINDINGS.md``. Read-only.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from dataclasses import asdict
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
+from joblib import Parallel, delayed
 
 from daytrade.config import AppConfig
 from daytrade.indicators.frame import ohlcv_to_frame
@@ -45,9 +48,19 @@ from daytrade.research.history import download_history
 _DEFAULT_SYMBOLS = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,LINKUSDT,AVAXUSDT"
 _DEFAULT_COST_BPS = 24.0  # 10bp fee × 2 + 2bp base slippage × 2
 
+# Parquet cache for built feature/label frames. Building a frame for
+# 90d × 1m takes ~20s (feature engineering + triple-barrier labels);
+# the parquet round-trip is ~1s. Re-running the sweep with the same
+# (symbol, days) is then near-free instead of full-recompute.
+_FRAME_CACHE_DIR = Path("artifacts/cache/cascade_meta_frames")
+
 
 def _pull(symbol: str, days: int) -> List[OHLCV]:
     return download_history(symbol, interval="1m", days=days)
+
+
+def _frame_cache_path(symbol: str, days: int) -> Path:
+    return _FRAME_CACHE_DIR / f"{symbol}_{days}d.parquet"
 
 
 def _train_test_split(frame: pd.DataFrame, train_frac: float = 0.7) -> tuple:
@@ -82,6 +95,37 @@ def _build_per_symbol_frame(candles: List[OHLCV], config: AppConfig) -> Optional
     return joined
 
 
+def _load_or_build_frame(symbol: str, days: int, config: AppConfig,
+                         use_cache: bool = True) -> Optional[pd.DataFrame]:
+    """Cached wrapper around _build_per_symbol_frame. Saves to parquet
+    keyed by ``(symbol, days)``. Reading the cached file is ~20x
+    faster than rebuilding from scratch on 90d × 1m bars.
+
+    The candle source (Binance public API + SQLite cache) is itself
+    keyed by symbol+interval+days; we only cache the EXPENSIVE
+    feature engineering + label step, not the candle pull.
+    """
+    cache_path = _frame_cache_path(symbol, days)
+    if use_cache and cache_path.exists():
+        try:
+            return pd.read_parquet(cache_path)
+        except (OSError, ValueError):
+            # Corrupted cache — rebuild
+            pass
+    candles = _pull(symbol, days)
+    frame = _build_per_symbol_frame(candles, config)
+    if frame is None or frame.empty:
+        return frame
+    if use_cache:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            frame.to_parquet(cache_path)
+        except (OSError, ImportError):
+            # pyarrow not available or write failed — return uncached frame
+            pass
+    return frame
+
+
 def _score_test_frame(model: MetaLabelModel, test_df: pd.DataFrame) -> Optional[pd.Series]:
     """Vectorised predict_proba over the test slice's feature rows."""
     feature_cols = model.feature_names
@@ -95,20 +139,28 @@ def _score_test_frame(model: MetaLabelModel, test_df: pd.DataFrame) -> Optional[
     return pd.Series(1.0 if classes[0] == 1 else 0.0, index=test_df.index)
 
 
-def _evaluate_symbol(symbol: str, candles: List[OHLCV], config: AppConfig,
-                     gate_multiple: float, cost_bps: float) -> Optional[Dict]:
-    """Per-symbol training: trains a fresh meta-model on this symbol's
-    70% only. Stricter test than production (which pools across symbols)."""
-    frame = _build_per_symbol_frame(candles, config)
+def _evaluate_symbol(symbol: str, days: int, config: AppConfig,
+                     gate_multiple: float, cost_bps: float,
+                     use_cache: bool = True) -> Optional[Dict]:
+    """Per-symbol training: pulls candles (cached), builds frame (cached),
+    trains a fresh meta-model on first 70%, scores last 30%.
+
+    This entry-point is picklable so joblib can fan out across CPUs.
+    """
+    frame = _load_or_build_frame(symbol, days, config, use_cache=use_cache)
     if frame is None or len(frame) < 200:
         return None
-
     train_df, test_df = _train_test_split(frame, train_frac=0.7)
     if len(train_df) < 100 or len(test_df) < 30:
         return None
 
+    # MetaLabelModel.train takes candles, not a frame — re-pull (cached at
+    # the SQLite layer, ~instant for the 2nd call) and slice to the train
+    # window proportionally.
+    candles = _pull(symbol, days)
+    cut = int(len(candles) * 0.7)
     model = MetaLabelModel()
-    train_result = model.train([candles[: int(len(candles) * 0.7)]], config)
+    train_result = model.train([candles[:cut]], config)
     if train_result is None or not model.is_trained:
         return None
 
@@ -134,23 +186,27 @@ def _evaluate_symbol(symbol: str, candles: List[OHLCV], config: AppConfig,
     }
 
 
-def _evaluate_pooled(candles_by_symbol: Dict[str, List[OHLCV]],
+def _evaluate_pooled(symbols: List[str], days: int,
                      config: AppConfig, gate_multiple: float,
-                     cost_bps: float) -> List[Dict]:
+                     cost_bps: float, use_cache: bool = True) -> List[Dict]:
     """Pooled training: trains ONE meta-model on the union of every
     symbol's first 70%, then scores each symbol's last 30% with it.
     Mirrors how the live observer trains (single pooled model)."""
-    # Build per-symbol frames so we can chronologically split each one
+    # Build per-symbol frames so we can chronologically split each one.
+    # Use the cache so the SECOND time you run pooled with the same
+    # (symbols, days) the frames load from parquet (~1s) instead of
+    # being rebuilt (~20s × N symbols).
     per_symbol: Dict[str, tuple] = {}
     pooled_train_candles: List[List[OHLCV]] = []
-    for sym, candles in candles_by_symbol.items():
-        frame = _build_per_symbol_frame(candles, config)
+    for sym in symbols:
+        frame = _load_or_build_frame(sym, days, config, use_cache=use_cache)
         if frame is None or len(frame) < 200:
             continue
         train_df, test_df = _train_test_split(frame, train_frac=0.7)
         if len(train_df) < 100 or len(test_df) < 30:
             continue
         per_symbol[sym] = (train_df, test_df)
+        candles = _pull(sym, days)
         cut = int(len(candles) * 0.7)
         pooled_train_candles.append(candles[:cut])
 
@@ -270,7 +326,16 @@ def main() -> int:
                    help="per_symbol = per-symbol meta-model (default); "
                         "pooled = one model on the union of training slices "
                         "(matches live observer)")
+    p.add_argument("--jobs", type=int, default=-1,
+                   help="Parallel workers for per_symbol mode (joblib). "
+                        "-1 = all cores. Pooled mode is single-process by "
+                        "construction (one training call).")
+    p.add_argument("--no-cache", action="store_true",
+                   help="Bypass the parquet feature-frame cache (rebuilds "
+                        "every frame from candles). The cache is at "
+                        "artifacts/cache/cascade_meta_frames/.")
     args = p.parse_args()
+    use_cache = not args.no_cache
 
     symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
     config = AppConfig()
@@ -281,39 +346,40 @@ def main() -> int:
           f"gate_multiple={args.gate_multiple} cost_bps={args.cost_bps}",
           file=sys.stderr)
 
-    # Pull all candles up front so both modes share the same input
-    candles_by_symbol: Dict[str, List[OHLCV]] = {}
-    for sym in symbols:
-        print(f"  {sym}: pulling cached candles...", file=sys.stderr)
-        try:
-            candles_by_symbol[sym] = _pull(sym, args.days)
-        except Exception as exc:  # noqa: BLE001
-            print(f"    WARN  {sym}: {exc}", file=sys.stderr)
-            continue
-
-    if not candles_by_symbol:
-        print("ERROR: no symbols produced candles", file=sys.stderr)
-        return 1
+    import time
+    t0 = time.monotonic()
 
     results: List[Dict] = []
     if args.training == "per_symbol":
-        for sym, candles in candles_by_symbol.items():
-            print(f"  {sym}: per-symbol train + score (n_bars={len(candles)})...",
-                  file=sys.stderr)
-            r = _evaluate_symbol(sym, candles, config,
-                                 gate_multiple=args.gate_multiple,
-                                 cost_bps=args.cost_bps)
+        print(f"  per_symbol training, jobs={args.jobs} "
+              f"(cache: {'on' if use_cache else 'off'})...", file=sys.stderr)
+        # joblib fans out across cores. Each worker pulls candles
+        # (cached at the SQLite layer), loads/builds the frame
+        # (cached at the parquet layer), trains a fresh model, scores.
+        # 6 symbols × 90d × 1m on 6 cores → ~6x speedup vs sequential.
+        parallel_results = Parallel(n_jobs=args.jobs, prefer="processes",
+                                    backend="loky", verbose=5)(
+            delayed(_evaluate_symbol)(
+                sym, args.days, config, args.gate_multiple, args.cost_bps,
+                use_cache,
+            ) for sym in symbols
+        )
+        for sym, r in zip(symbols, parallel_results):
             if r is None:
                 print(f"    SKIP  {sym}: insufficient data or training",
                       file=sys.stderr)
                 continue
             results.append(r)
     else:  # pooled
-        print(f"  pooled training on {len(candles_by_symbol)} symbols...",
-              file=sys.stderr)
-        results = _evaluate_pooled(candles_by_symbol, config,
+        print(f"  pooled training on {len(symbols)} symbols "
+              f"(cache: {'on' if use_cache else 'off'})...", file=sys.stderr)
+        results = _evaluate_pooled(symbols, args.days, config,
                                    gate_multiple=args.gate_multiple,
-                                   cost_bps=args.cost_bps)
+                                   cost_bps=args.cost_bps,
+                                   use_cache=use_cache)
+
+    elapsed = time.monotonic() - t0
+    print(f"  evaluation took {elapsed:.1f}s", file=sys.stderr)
 
     if not results:
         print("ERROR: no symbols produced results", file=sys.stderr)

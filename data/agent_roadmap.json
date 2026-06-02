@@ -65,14 +65,64 @@
     {
       "id": "P2-2",
       "title": "Same for nighttrade",
-      "status": "in_progress",
-      "severity": "MEDIUM"
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T04:50:01",
+      "notes": "Mirrored daytrade lint config to nighttrade. Baseline captured in docs/lint-baseline.md."
     },
     {
       "id": "P3-1",
       "title": "SOL CASCADE_EXHAUSTION cross-asset validation via TDD",
+      "status": "complete",
+      "severity": "HIGH",
+      "completed_at": "2026-06-02T04:50:01",
+      "notes": "8 tests + sweep script + cascade_validation module. 30d \u00d7 6 majors at 30m: 4/6 symbols +ve with 64-71% wr. SOL +18.87 bp (n=39). Net of 24 bp cost, not standalone-tradeable \u2014 combine with meta-label gate next. See docs/CASCADE-VALIDATION-FINDINGS.md."
+    },
+    {
+      "id": "P4-1",
+      "title": "Combine CASCADE_EXHAUSTION feature with meta-label gate (precision lift)",
+      "status": "complete",
+      "priority": "medium",
+      "rationale": "Standalone edge is 10-20 bp, below 24 bp retail cost. Meta-label requires 2\u00d7 base rate. Test whether adding cascade-state as a feature lifts precision past cost threshold.",
+      "added_at": "2026-06-02T04:50:01",
+      "completed_at": "2026-06-02T05:59:39",
+      "notes": "Negative result: intersection of cascade_exhaustion + meta_gated is n=0-2 per symbol \u2014 they're anti-correlated. 5/6 symbols have positive gross cascade edge (+12 to +22 bps) but cost (24bp) eats it. Per-symbol meta-model overfits 30d windows. Recommendation: test UNION gate (cascade override) on 90-180d window before considering any gate change. See docs/CASCADE-META-INTERACTION-FINDINGS.md. Branch: research/cascade-meta-interaction. 10 unit tests, sweep is read-only."
+    },
+    {
+      "id": "P4-2",
+      "title": "Investigate intermittent 'database is locked' on nighttrade observatory writes",
+      "status": "complete",
+      "priority": "low",
+      "rationale": "Observed once at 2026-06-02T03:50 for symbol SW \u2014 one-cycle skip, cycle continued. WAL mode is enabled but a writer is still occasionally blocked. Likely the dashboard read-mode lock or the prune job. Should add retry-with-backoff for transient locks.",
+      "added_at": "2026-06-02T04:50:01",
+      "completed_at": "2026-06-02T05:09:13",
+      "notes": "_RetryingConnection proxy added to ObservatoryDB. Retries SQLite 'locked'/'busy' with exponential backoff (5x, 50ms-2s); other OperationalErrors pass through. timeout bumped 10s->30s. 8 unit+integration tests. ADR-0006. Branch: fix/db-retry-on-locked (nighttrade) \u2014 local commit, full suite still running."
+    },
+    {
+      "id": "P4-3",
+      "title": "Deploy fix/db-retry-on-locked after merge (requires threads=False merge first)",
+      "status": "complete",
+      "priority": "low",
+      "rationale": "fix/db-retry-on-locked branches off main, which still has threads=8 in live_feed.py. Deploying it directly would revert the threads=False fix. Order: merge fix/nt-crash-threads-false to main, rebase fix/db-retry-on-locked onto main, then deploy.",
+      "added_at": "2026-06-02T05:09:13",
+      "completed_at": "2026-06-02T05:45:24",
+      "notes": "Sequenced merges: fix/nt-crash-threads-false \u2192 main (no-ff), rebased fix/db-retry-on-locked onto main, fast-fwd merge, force-pushed branch. Both fixes in main as 200130f + ec3ee0c. Sync.sh deployed; launchctl kickstart respawned observer (PID 86275). No RuntimeError, no locked errors. Daytrade fix/mission-control-filter-caffeinate also merged (09d1136) \u2014 MC was already running the new code."
+    },
+    {
+      "id": "P5-1",
+      "title": "Mission control: CPU sparkline (host + per-bot)",
+      "status": "complete",
+      "rationale": "User asked to mirror RAM integration for CPU so a saturated host (browsers/dev tools) is visible alongside per-bot CPU%.",
+      "completed_at": "2026-06-02T05:21:47",
+      "notes": "cpu_history.py mirrors ram_history.py; +1 host scope (load_avg / cpu_count). API: host_cpu, host_cpu_history, bots[i].cpu_history, total_pcpu_pct. UI: top card + per-bot mini-spark. 22 MC tests, 581 daytrade suite green. Live as PID 73737 on :8002. Branch: fix/mission-control-filter-caffeinate (700be9f)."
+    },
+    {
+      "id": "P5-2",
+      "title": "Cascade UNION/override gate on 90-180d window",
       "status": "queued",
-      "severity": "HIGH"
+      "priority": "low",
+      "rationale": "Per P4-1 findings, intersection failed because meta-gate anti-selects cascade bars. Union path needs longer evaluation window to bind variance. Plumb via use_liquidation_cascade_gate flag (config/schema.py:553), test BTC/SOL/BNB/LINK/AVAX (skip ETH per P4-1).",
+      "added_at": "2026-06-02T05:59:39"
     }
   ]
 }
