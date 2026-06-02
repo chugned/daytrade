@@ -185,29 +185,40 @@ _INDEX_HTML = """<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>daytrade — mission control</title>
+<title>Mission control</title>
 <style>
   :root { color-scheme: light dark; }
   body { font-family: -apple-system, system-ui, sans-serif; margin: 0;
          padding: 12px; background: #0e1116; color: #e5e9ef; }
   h1 { font-size: 1.4rem; margin: 0 0 8px 0; }
+  h2.section { font-size: 1rem; margin: 22px 0 8px 0; color: #98a0ab;
+               font-weight: 500; letter-spacing: 0.04em;
+               text-transform: uppercase; }
   .grid { display: grid; gap: 16px;
           grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
   .card { background: #151b23; border: 1px solid #2a2f38;
-          border-radius: 12px; padding: 14px; }
-  .card h2 { font-size: 1.1rem; margin: 0 0 8px 0; display: flex;
-             justify-content: space-between; align-items: center; }
-  .pill { font-size: 0.7rem; padding: 3px 10px; border-radius: 999px; }
+          border-radius: 12px; padding: 16px; }
+  .card h2.card-title { font-size: 1.15rem; margin: 0 0 4px 0;
+                        display: flex; justify-content: space-between;
+                        align-items: center; }
+  .pill { font-size: 0.7rem; padding: 3px 10px; border-radius: 999px;
+          font-weight: 500; }
   .pill.ok { background: #0a4a25; color: #6dd58c; }
   .pill.warn { background: #4d3a08; color: #f7c163; }
   .pill.bad { background: #5a1721; color: #ff6b6b; }
-  .kv { display: grid; grid-template-columns: auto auto; gap: 2px 12px;
-        font-size: 0.85rem; margin: 6px 0 12px 0; }
-  .kv .k { color: #98a0ab; }
-  .kv .v { text-align: right; font-variant-numeric: tabular-nums; }
+  .summary { font-size: 0.95rem; line-height: 1.4; margin: 8px 0 14px 0;
+             color: #e5e9ef; }
+  .stat-row { display: flex; gap: 16px; margin: 8px 0; flex-wrap: wrap; }
+  .stat { background: #0a0d12; padding: 8px 12px; border-radius: 8px;
+          min-width: 100px; flex: 1; }
+  .stat .label { font-size: 0.72rem; color: #98a0ab; }
+  .stat .value { font-size: 1.05rem; font-weight: 600;
+                 font-variant-numeric: tabular-nums; margin-top: 2px; }
   pre { background: #0a0d12; padding: 8px; border-radius: 6px;
         font-size: 0.7rem; line-height: 1.3; overflow-x: auto;
-        max-height: 200px; color: #b8c0cc; margin: 0; }
+        max-height: 160px; color: #b8c0cc; margin: 8px 0 0 0; }
+  details { margin-top: 10px; }
+  details summary { cursor: pointer; color: #6db3ff; font-size: 0.8rem; }
   .links a { color: #6db3ff; text-decoration: none; margin-right: 12px;
              font-size: 0.85rem; }
   .links a:hover { text-decoration: underline; }
@@ -215,15 +226,15 @@ _INDEX_HTML = """<!doctype html>
 </style>
 </head>
 <body>
-<h1>mission control <span class="meta" id="updated"></span></h1>
+<h1>Mission control <span class="meta" id="updated"></span></h1>
 
-<h2 style="font-size:1.05rem;margin:18px 0 6px 0;">bots</h2>
+<h2 class="section">Trading bots</h2>
 <div class="grid" id="grid"></div>
 
-<h2 style="font-size:1.05rem;margin:24px 0 6px 0;">claude · agents · roadmap</h2>
+<h2 class="section">What Claude is doing</h2>
 <div class="grid" id="agent-grid"></div>
 
-<p class="meta">paper / simulation only. read-only. cannot place orders, kill processes, or edit DBs.</p>
+<p class="meta">Paper / simulation only. Read-only. Cannot place orders, kill processes, or edit databases.</p>
 <script>
 function escapeHtml(s) { return String(s||'').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'})[c]); }
 
@@ -240,63 +251,122 @@ function parseEtimeSeconds(etime) {
   return s + days*86400;
 }
 
+// Format helpers — output is plain English
+function humanBytes(mb) {
+  if (mb === null || mb === undefined) return '—';
+  if (mb < 1024) return mb.toFixed(0) + ' MB';
+  return (mb/1024).toFixed(2) + ' GB';
+}
+function humanUptime(etime) {
+  // Convert '11-09:21:26' or '2-06:34' or '01:36' to plain English
+  const s = parseEtimeSeconds(etime);
+  if (s < 60) return Math.round(s) + ' seconds';
+  if (s < 3600) return Math.round(s/60) + ' minutes';
+  if (s < 86400) {
+    const h = Math.floor(s/3600), m = Math.round((s%3600)/60);
+    return h + ' hour' + (h!==1?'s':'') + (m?' '+m+' min':'');
+  }
+  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600);
+  return d + ' day' + (d!==1?'s':'') + (h?' '+h+'h':'');
+}
+function humanAge(seconds) {
+  if (seconds === null || seconds === undefined) return 'never';
+  if (seconds < 60) return Math.round(seconds) + ' seconds ago';
+  if (seconds < 3600) return Math.round(seconds/60) + ' minutes ago';
+  if (seconds < 86400) return Math.round(seconds/3600) + ' hours ago';
+  return Math.round(seconds/86400) + ' days ago';
+}
+
+function statusFor(bot) {
+  // Returns {pillClass, pillText, summary} — one sentence summary in English
+  const alive = bot.processes.length;
+  const ageSec = bot.heartbeat_age_seconds;
+  const procUptimes = bot.processes.map(p => parseEtimeSeconds(p.etime));
+  const youngestProcSec = procUptimes.length ? Math.min(...procUptimes) : Infinity;
+  const justStarted = youngestProcSec < 180;  // <3 min old
+
+  // No process at all
+  if (alive === 0) {
+    return {pillClass:'bad', pillText:'STOPPED',
+      summary:`This bot is NOT running. Last sign of life was ${humanAge(ageSec)}.`};
+  }
+  // Process exists + recent heartbeat
+  if (ageSec !== null && ageSec < 600) {
+    return {pillClass:'ok', pillText:'HEALTHY',
+      summary:`This bot is running and reporting in regularly. Last activity ${humanAge(ageSec)}.`};
+  }
+  // Process exists but heartbeat is older than the process itself = just restarted
+  if (youngestProcSec < (ageSec || Infinity)) {
+    return {pillClass:'warn',
+      pillText:'STARTING',
+      summary:`This bot just started ${humanUptime(bot.processes[0].etime)} ago and is still warming up (downloading data, loading model). It hasn't started reporting in yet.`};
+  }
+  // Process exists, heartbeat is stale → bot is alive but stuck
+  return {pillClass:'warn', pillText:'NOT RESPONDING',
+    summary:`This bot is alive (process is running) but has not reported in for ${humanAge(ageSec)}. It may be stuck — consider restarting.`};
+}
+
+function ramTrend(ramHist) {
+  if (!ramHist || ramHist.length < 2) return null;
+  const vals = ramHist.map(r => r.rss_mb || 0);
+  const first = vals[0], last = vals[vals.length - 1];
+  const trendMb = last - first;
+  const minutes = (new Date(ramHist[ramHist.length-1].ts) - new Date(ramHist[0].ts)) / 60000;
+  let label = 'stable';
+  let colour = '#6dd58c';
+  if (Math.abs(trendMb) < 10) { label = 'stable'; colour = '#6dd58c'; }
+  else if (trendMb > 50) { label = 'growing (possible leak)'; colour = '#ff6b6b'; }
+  else if (trendMb > 10) { label = 'slowly growing'; colour = '#f7c163'; }
+  else if (trendMb < -50) { label = 'dropped sharply'; colour = '#6db3ff'; }
+  else { label = 'slowly shrinking'; colour = '#6db3ff'; }
+  return {label, colour, trendMb, minutes, first, last};
+}
+
 function renderBots(data) {
   const grid = document.getElementById('grid');
   grid.innerHTML = '';
   for (const bot of data.bots) {
-    const aliveCount = bot.processes.length;
-    const ageSec = bot.heartbeat_age_seconds;
-    // The youngest process — what's actually serving work right now
-    const procUptimes = bot.processes.map(p => parseEtimeSeconds(p.etime));
-    const youngestProcSec = procUptimes.length ? Math.min(...procUptimes) : Infinity;
-    let pillClass = 'bad', pillText = 'OFFLINE';
-    if (aliveCount > 0 && ageSec !== null && ageSec < 600) {
-      pillClass = 'ok'; pillText = 'ONLINE';
-    } else if (aliveCount > 0 && youngestProcSec < (ageSec || Infinity)) {
-      // New process exists but its heartbeat hasn't landed yet =
-      // bot is in CLI startup (e.g. nighttrade's yfinance warmup).
-      pillClass = 'warn';
-      pillText = 'STARTING (' + Math.round(youngestProcSec) + 's)';
-    } else if (aliveCount > 0) {
-      pillClass = 'warn'; pillText = 'STALE HEARTBEAT';
-    } else if (ageSec !== null && ageSec < 600) {
-      pillClass = 'warn'; pillText = 'NO PROCESS';
-    }
-    const links = (bot.dashboard_url
-          ? `<a href="${bot.dashboard_url}" target="_blank">dashboard ↗</a>` : '');
-    const kv = (k, v) => `<div class="k">${k}</div><div class="v">${v}</div>`;
-    let kvHtml = '';
-    kvHtml += kv('processes', `${aliveCount} alive`);
-    if (bot.processes[0]) {
-      kvHtml += kv('pid · uptime', `${bot.processes[0].pid} · ${bot.processes[0].etime}`);
-      kvHtml += kv('cpu', `${bot.processes[0].pcpu_pct.toFixed(1)}%`);
-      // RAM with total across all of this bot's procs and a colour cue
-      const rssMb = bot.total_rss_mb || 0;
-      let ramColour = '#6dd58c';
-      if (rssMb > 1024) ramColour = '#ff6b6b';
-      else if (rssMb > 500) ramColour = '#f7c163';
-      const ramFormatted = rssMb >= 1024 ? (rssMb/1024).toFixed(2)+' GB' : rssMb.toFixed(0)+' MB';
-      kvHtml += kv('RAM (RSS)', `<span style="color:${ramColour}">${ramFormatted}</span>`);
-    }
-    if (bot.db && bot.db.available && !bot.db.db_error) {
-      kvHtml += kv('closed trades', bot.db.closed_trades);
-      kvHtml += kv('open positions', bot.db.open_trades);
-      kvHtml += kv('realised PnL', '€' + bot.db.realised_pnl_usdt.toFixed(2));
-      kvHtml += kv('errors 24h', bot.db.errors_last_24h);
-      kvHtml += kv('heartbeat age', ageSec !== null ? Math.round(ageSec) + 's' : '—');
-    } else if (bot.db && bot.db.db_error) {
-      kvHtml += kv('db error', bot.db.db_error);
-    } else {
-      kvHtml += kv('db', '(not found)');
-    }
-    const logHtml = bot.log_tail.length
-          ? `<pre>${bot.log_tail.slice(-12).map(l => escapeHtml(l)).join('\\n')}</pre>`
-          : `<pre style="opacity:.5">(no log lines)</pre>`;
-    // RAM sparkline — last hour
+    const st = statusFor(bot);
+    const rssMb = bot.total_rss_mb || 0;
+    const trades = bot.db && bot.db.available && !bot.db.db_error;
     const ramHist = bot.ram_history || [];
+    const trend = ramTrend(ramHist);
+
+    // Stat row — 3-4 big numbers
+    let stats = '';
+    if (bot.processes[0]) {
+      stats += `<div class="stat"><div class="label">Memory used</div>
+                <div class="value">${humanBytes(rssMb)}</div></div>`;
+      stats += `<div class="stat"><div class="label">Running for</div>
+                <div class="value">${humanUptime(bot.processes[0].etime)}</div></div>`;
+    }
+    if (trades) {
+      stats += `<div class="stat"><div class="label">Paper trades made</div>
+                <div class="value">${bot.db.closed_trades.toLocaleString()}</div></div>`;
+      const pnl = bot.db.realised_pnl_usdt;
+      const pnlColor = pnl > 0 ? '#6dd58c' : pnl < 0 ? '#ff6b6b' : '#e5e9ef';
+      stats += `<div class="stat"><div class="label">Paper money earned</div>
+                <div class="value" style="color:${pnlColor}">€${pnl.toFixed(2)}</div></div>`;
+    }
+
+    // RAM trend sentence
+    let trendSentence = '';
+    if (trend) {
+      trendSentence = `<div style="font-size:.85rem;margin:8px 0;">
+        Memory has been <strong style="color:${trend.colour}">${trend.label}</strong>
+        over the last ${Math.round(trend.minutes)} minutes
+        (from ${humanBytes(trend.first)} to ${humanBytes(trend.last)}).
+      </div>`;
+    } else {
+      trendSentence = `<div style="font-size:.85rem;margin:8px 0;color:#98a0ab;">
+        Memory tracking is just starting — not enough data for a trend yet.
+      </div>`;
+    }
+
+    // SVG sparkline (smaller, just a visual hint)
     let sparkSvg = '';
     if (ramHist.length > 1) {
-      const W = 280, H = 50;
+      const W = 280, H = 36;
       const vals = ramHist.map(r => r.rss_mb || 0);
       const lo = Math.min(...vals), hi = Math.max(...vals);
       const range = Math.max(1, hi - lo);
@@ -305,23 +375,46 @@ function renderBots(data) {
         const y = H - ((r.rss_mb - lo) / range) * (H - 4) - 2;
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       }).join(' ');
-      const trend = vals[vals.length - 1] - vals[0];
-      const trendColour = trend > 50 ? '#ff6b6b' : trend > 5 ? '#f7c163' : '#6dd58c';
-      sparkSvg = `<div style="margin-top:8px;">
-        <div style="font-size:.7rem;color:#98a0ab;display:flex;justify-content:space-between;">
-          <span>RAM 60min · ${ramHist.length} samples</span>
-          <span style="color:${trendColour}">${trend>=0?'+':''}${trend.toFixed(1)} MB</span>
-        </div>
-        <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="background:#0a0d12;border-radius:4px;">
-          <polyline points="${pts}" fill="none" stroke="${trendColour}" stroke-width="1.5"/>
-        </svg>
+      sparkSvg = `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}"
+          preserveAspectRatio="none" style="background:#0a0d12;border-radius:4px;">
+        <polyline points="${pts}" fill="none" stroke="${trend.colour}" stroke-width="1.5"/>
+      </svg>
+      <div style="font-size:.7rem;color:#6c727b;display:flex;justify-content:space-between;margin-top:2px;">
+        <span>low: ${humanBytes(Math.min(...vals))}</span>
+        <span>now: ${humanBytes(vals[vals.length-1])}</span>
+        <span>high: ${humanBytes(Math.max(...vals))}</span>
       </div>`;
     }
+
+    // Recent activity (collapsible) — drop full log dump from card
+    const logHtml = bot.log_tail.length
+      ? `<details><summary>Show recent activity log</summary>
+         <pre>${bot.log_tail.slice(-10).map(l => escapeHtml(l)).join('\\n')}</pre>
+         </details>`
+      : '';
+
+    // Errors today (only show if any)
+    let errorLine = '';
+    if (trades && bot.db.errors_last_24h > 0) {
+      errorLine = `<div style="color:#f7c163;font-size:.85rem;margin:4px 0;">
+        ⚠ ${bot.db.errors_last_24h} error${bot.db.errors_last_24h===1?'':'s'} in the last 24 hours.
+      </div>`;
+    }
+
+    // Dashboard link
+    const links = bot.dashboard_url
+      ? `<div style="margin-top:8px;"><a href="${bot.dashboard_url}" target="_blank" style="color:#6db3ff;font-size:.85rem;">Open ${escapeHtml(bot.name)}'s own dashboard ↗</a></div>`
+      : '';
+
     grid.innerHTML += `<section class="card">
-      <h2>${escapeHtml(bot.name)} <span class="pill ${pillClass}">${pillText}</span></h2>
-      <div class="kv">${kvHtml}</div>
-      <div class="links">${links}</div>
+      <h2 class="card-title">${escapeHtml(bot.name)}
+        <span class="pill ${st.pillClass}">${st.pillText}</span></h2>
+      <div class="summary">${st.summary}</div>
+      <div class="stat-row">${stats}</div>
+      ${errorLine}
+      ${trendSentence}
       ${sparkSvg}
+      ${links}
       ${logHtml}
     </section>`;
   }
@@ -335,46 +428,85 @@ function renderRoadmap(rm) {
   const order = {in_progress:0, queued:1, complete:2, blocked:3};
   const items = [...rm.items].sort((a,b) =>
     (order[a.status]??9) - (order[b.status]??9));
-  let html = `<div style="font-size:.75rem;color:#98a0ab;margin-bottom:8px;">
-    goal: ${escapeHtml(rm.session_goal||'')}<br>
-    phase: ${escapeHtml(rm.current_phase||'')}
+  const counts = {complete:0, in_progress:0, queued:0, blocked:0};
+  for (const it of rm.items) counts[it.status] = (counts[it.status]||0)+1;
+  const total = rm.items.length;
+  const pct = total ? Math.round(counts.complete / total * 100) : 0;
+
+  let html = `<div style="font-size:.9rem;margin-bottom:10px;">
+    <div><strong>Goal:</strong> ${escapeHtml(rm.session_goal||'')}</div>
+    <div style="margin-top:4px;"><strong>Right now:</strong> ${escapeHtml(rm.current_phase||'idle')}</div>
+    <div style="margin-top:8px;font-size:.8rem;color:#98a0ab;">
+      ${counts.complete}/${total} tasks done (${pct}%)
+      · ${counts.in_progress} in progress
+      · ${counts.queued} waiting
+    </div>
+    <div style="background:#0a0d12;border-radius:4px;height:6px;margin-top:6px;overflow:hidden;">
+      <div style="background:#6dd58c;height:100%;width:${pct}%;"></div>
+    </div>
   </div>`;
+
+  const statusLabel = {
+    in_progress: 'WORKING ON IT',
+    queued: 'WAITING',
+    complete: 'DONE',
+    blocked: 'BLOCKED',
+  };
+  const statusColor = {
+    in_progress: '#6dd58c',
+    queued: '#98a0ab',
+    complete: '#6c727b',
+    blocked: '#ff6b6b',
+  };
+
   for (const it of items) {
     const sev = it.severity || '';
-    const sevColor = sev==='CRITICAL'?'#ff6b6b':sev==='HIGH'?'#f7c163':sev==='MEDIUM'?'#6db3ff':'#6c727b';
-    const statusColor = it.status==='in_progress'?'#6dd58c':it.status==='complete'?'#6c727b':it.status==='blocked'?'#ff6b6b':'#98a0ab';
-    html += `<div style="border-left:3px solid ${statusColor};padding:4px 8px;margin:4px 0;background:#0a0d12;border-radius:4px;">
-      <div style="font-size:.8rem;display:flex;justify-content:space-between;">
-        <span><b>${escapeHtml(it.id)}</b> ${escapeHtml(it.title)}</span>
-        <span style="color:${sevColor};">${escapeHtml(sev)}</span>
+    const sevColor = sev==='CRITICAL'?'#ff6b6b':sev==='HIGH'?'#f7c163':sev==='MEDIUM'?'#6db3ff':'transparent';
+    const sc = statusColor[it.status] || '#98a0ab';
+    const sl = statusLabel[it.status] || it.status;
+    const titleStyle = it.status === 'complete' ? 'opacity:.5;text-decoration:line-through;' : '';
+    html += `<div style="border-left:3px solid ${sc};padding:6px 10px;margin:4px 0;background:#0a0d12;border-radius:4px;">
+      <div style="font-size:.85rem;display:flex;justify-content:space-between;align-items:center;${titleStyle}">
+        <span>${escapeHtml(it.title)}</span>
+        <span style="font-size:.65rem;color:${sc};font-weight:600;">${sl}</span>
       </div>
-      <div style="font-size:.7rem;color:#98a0ab;">
-        ${escapeHtml(it.status)} · ${escapeHtml(it.summary||'')}
-      </div>
+      ${it.summary?`<div style="font-size:.75rem;color:#98a0ab;margin-top:2px;${titleStyle}">${escapeHtml(it.summary)}</div>`:''}
+      ${sev && it.status !== 'complete'?`<div style="font-size:.65rem;color:${sevColor};margin-top:2px;font-weight:600;">${escapeHtml(sev)} severity</div>`:''}
     </div>`;
   }
   return html;
 }
 
 function renderActivityTimeline(entries) {
-  if (!entries || entries.length === 0) return '<pre style="opacity:.5">(no activity yet)</pre>';
-  // Newest at top
-  const rev = entries.slice().reverse().slice(0, 30);
-  let html = '';
+  if (!entries || entries.length === 0)
+    return '<div style="opacity:.5;font-size:.85rem;">No activity logged yet.</div>';
+  const rev = entries.slice().reverse().slice(0, 20);
+  const kindLabel = {
+    status: 'Thinking', edit: 'Changed code', shell: 'Ran a command',
+    spawn: 'Started helper', finding: 'Found problem',
+    complete: 'Finished', roadmap: 'Updated plan',
+  };
   const kindColor = {
     status: '#6db3ff', edit: '#6dd58c', shell: '#f7c163',
     spawn: '#c78dff', finding: '#ff6b6b', complete: '#6dd58c',
     roadmap: '#98a0ab',
   };
+  let html = '';
   for (const e of rev) {
     const c = kindColor[e.kind] || '#98a0ab';
+    const label = kindLabel[e.kind] || e.kind;
     const t = new Date(e.ts);
-    const tstr = t.toLocaleTimeString();
-    html += `<div style="border-left:3px solid ${c};padding:3px 8px;margin:2px 0;font-size:.75rem;">
-      <span style="color:#6c727b;">${tstr}</span>
-      <span style="color:${c};">${escapeHtml(e.agent)}</span>
-      · ${escapeHtml(e.summary)}
-      ${e.detail?`<div style="opacity:.6;font-size:.7rem;">${escapeHtml(e.detail)}</div>`:''}
+    const ageSec = (Date.now() - t.getTime()) / 1000;
+    const tstr = ageSec < 60 ? Math.round(ageSec) + 's ago'
+                : ageSec < 3600 ? Math.round(ageSec/60) + 'm ago'
+                : t.toLocaleTimeString();
+    html += `<div style="border-left:3px solid ${c};padding:6px 10px;margin:4px 0;background:#0a0d12;border-radius:4px;">
+      <div style="font-size:.7rem;color:#98a0ab;display:flex;justify-content:space-between;">
+        <span style="color:${c};font-weight:600;">${label}</span>
+        <span>${tstr}</span>
+      </div>
+      <div style="font-size:.85rem;margin-top:2px;">${escapeHtml(e.summary)}</div>
+      ${e.detail?`<div style="font-size:.7rem;color:#98a0ab;margin-top:2px;">${escapeHtml(e.detail)}</div>`:''}
     </div>`;
   }
   return html;
@@ -404,9 +536,9 @@ async function refresh() {
     const agents = Object.keys(byAgent).sort();
     let cards = '';
 
-    // Roadmap card (always first)
+    // Plan card (always first)
     cards += `<section class="card">
-      <h2>roadmap</h2>
+      <h2 class="card-title">The plan</h2>
       ${renderRoadmap(rm)}
     </section>`;
 
@@ -415,22 +547,31 @@ async function refresh() {
       const entries = byAgent[ag];
       const last = entries[entries.length - 1];
       const ageSec = (Date.now() - new Date(last.ts).getTime()) / 1000;
-      let pill = 'ok', pillText = 'ACTIVE';
-      if (ageSec > 600) { pill = 'bad'; pillText = 'IDLE >10m'; }
-      else if (ageSec > 120) { pill = 'warn'; pillText = 'idle ' + Math.round(ageSec/60) + 'm'; }
+      let pill = 'ok', pillText = 'WORKING', summary = '';
+      if (ageSec > 600) {
+        pill = 'bad'; pillText = 'IDLE';
+        summary = `Hasn't done anything for ${humanAge(ageSec)}.`;
+      } else if (ageSec > 120) {
+        pill = 'warn'; pillText = 'PAUSED';
+        summary = `Last action was ${humanAge(ageSec)}. May be waiting on something.`;
+      } else {
+        summary = `Last action ${humanAge(ageSec)}. ${entries.length} things done.`;
+      }
+      const displayName = ag === 'claude-main' ? 'Claude (you, the engineer)'
+                        : ag.startsWith('qa-') ? 'Helper: QA auditor'
+                        : ag;
       cards += `<section class="card">
-        <h2>${escapeHtml(ag)} <span class="pill ${pill}">${pillText}</span></h2>
-        <div style="font-size:.75rem;color:#98a0ab;margin:0 0 8px 0;">
-          ${entries.length} entries · last: ${new Date(last.ts).toLocaleTimeString()}
-        </div>
+        <h2 class="card-title">${escapeHtml(displayName)}
+          <span class="pill ${pill}">${pillText}</span></h2>
+        <div class="summary">${summary}</div>
         ${renderActivityTimeline(entries)}
       </section>`;
     }
 
     if (agents.length === 0) {
       cards += `<section class="card">
-        <h2>activity</h2>
-        <pre style="opacity:.5">No agent activity logged yet.</pre>
+        <h2 class="card-title">Claude</h2>
+        <div class="summary">Nothing has been logged yet.</div>
       </section>`;
     }
     agentGrid.innerHTML = cards;
