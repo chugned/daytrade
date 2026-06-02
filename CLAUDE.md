@@ -130,6 +130,22 @@ nighttrade's DB from the **deployed** directory.
 
 Daytrade has no such split — runs from `~/Desktop/coding/daytrade/`.
 
+## Anti-patterns — DO NOT reintroduce
+
+Bugs that were fixed once and now have regression tests. If a test
+named after one of these fires, **read the linked ADR before
+"fixing" the test**.
+
+| Anti-pattern | Why it's banned | Reference |
+| --- | --- | --- |
+| Parallel-thread fetch over the symbol universe (e.g. `yf.download(threads=True)`, `ThreadPoolExecutor(max_workers=None)`) | One OS thread per ticker × 100s of symbols → `RuntimeError: can't start new thread` whenever the host has modest concurrent thread pressure (macOS `ulimit -u` ≈ 2784, easily eaten by browsers + dev tools + other bots). Sibling repo nighttrade tripped this twice. Use sequential fetch, or a hard small cap (≤4) with a pinning test. | nighttrade ADR-0005 |
+| `AlertManager` writing to `errors` table | Pollutes `errors_last_24h` counter with informational messages. | ADR-0001 |
+| Marking another bot's `bot_run` as crashed without PID liveness check | Spurious "crashed" rows masked real crashes. | ADR-0002 |
+
+If you add new parallelism over a symbol universe (real-time or
+research), add a regression test in the same commit that pins the
+upper worker count.
+
 ## Operational facts
 
 - Daytrade runs as `python -m daytrade learn --days 30 --interval 60 --real-data`.
