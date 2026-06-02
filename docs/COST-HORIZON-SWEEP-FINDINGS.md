@@ -9,7 +9,29 @@
 - Matrix size: 1800 cells (30 training × 60 reslices)
 - Eval time: 440.6s (parallel jobs=-1)
 
-## TL;DR — yes, the strategy CAN be net-positive
+## ⚠ TL;DR — INVALIDATED by simulator follow-up (2026-06-02)
+
+> The headline cells below ARE correct for the 30-day test window
+> they were measured on. But the equity-curve simulator
+> (`scripts/simulate_winner.py`) re-ran the top cell (BNB 240m
+> gate=4.0) on **90 days** and got the **opposite** result:
+>
+> | Window | trades | mean net | cumulative |
+> | --- | ---: | ---: | ---: |
+> | 30d  (matches P5-3) | 245 | +29.45 bp | +7,215 bp |
+> | 90d  (simulator) | 742 | **−60.85 bp** | **−45,147 bp** |
+>
+> Same code, same gate, same cost. The +30 bp at 30d was a
+> recent-window regime effect, not a stable edge. The "winners"
+> below should be read as "what looked good in a 9-day held-out
+> window inside the 30-day sample" — not as a tradable strategy.
+>
+> See `docs/STRATEGY-CHANGE-RUNBOOK.md` (the do-not-execute banner)
+> and `artifacts/equity_BNBUSDT_240m_g4.0.png`.
+
+---
+
+## TL;DR — yes, the strategy CAN be net-positive (within the 30d sample)
 
 **The previous "all slices negative" result was a horizon problem,
 not a strategy problem.** At 240-minute holds, the strategy clears

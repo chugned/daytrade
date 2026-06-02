@@ -119,10 +119,50 @@
     {
       "id": "P5-2",
       "title": "Cascade UNION/override gate on 90-180d window",
-      "status": "queued",
+      "status": "complete",
       "priority": "low",
       "rationale": "Per P4-1 findings, intersection failed because meta-gate anti-selects cascade bars. Union path needs longer evaluation window to bind variance. Plumb via use_liquidation_cascade_gate flag (config/schema.py:553), test BTC/SOL/BNB/LINK/AVAX (skip ETH per P4-1).",
-      "added_at": "2026-06-02T05:59:39"
+      "added_at": "2026-06-02T05:59:39",
+      "completed_at": "2026-06-02T07:26:37",
+      "notes": "UNION/cascade-override lift is +0.06 to +1.11 bps over meta_gated on 5/6 symbols at 30m \u00d7 90d. Real but too small to flip net-positive on its own at 30m. See docs/CASCADE-META-90D-PER-SYMBOL.md. P5-3 follow-up answers the deeper question."
+    },
+    {
+      "id": "P5-3",
+      "title": "Cost \u00d7 horizon \u00d7 gate sensitivity sweep \u2014 find net-positive cells",
+      "status": "complete",
+      "priority": "high",
+      "rationale": "Original 30m results were all net-negative. Strategic question: any (symbol, horizon, gate, cost) where strategy clears?",
+      "notes": "44+ winners. 18 at retail (24bp) cost. Headline: BNB 240m gate=4.0 = +30.87 bp net on n=220. SOL 240m gate=3.0 = +58.17 bp. Strategy IS viable at longer horizons with tighter gating. See docs/COST-HORIZON-SWEEP-FINDINGS.md. | INVALIDATED 2026-06-02 by simulator follow-up: BNB 240m gate=4.0 = +29.45 bp on 30d (matches table) but -60.85 bp on 90d. Regime-dependent, not a stable edge. See STRATEGY-CHANGE-RUNBOOK.md banner.",
+      "completed_at": "2026-06-02T07:26:37",
+      "added_at": "2026-06-02T07:26:37"
+    },
+    {
+      "id": "P5-4",
+      "title": "Validate P5-3 winners via pooled training + 90d test window",
+      "status": "complete",
+      "priority": "high",
+      "rationale": "P5-3 used per-symbol training on 27-day held-out \u2014 production uses pooled training. Pool the winning configs (BNB/SOL \u00d7 120-240m \u00d7 gate 3-5) on 90d before any live-config change.",
+      "added_at": "2026-06-02T07:26:37",
+      "completed_at": "2026-06-02T08:08:15",
+      "notes": "Killed early \u2014 equity-curve simulator gave the same negative answer faster from a different angle. P5-3 winners don't survive 90d held-out."
+    },
+    {
+      "id": "P5-5",
+      "title": "Wire 240m hold + gate \u00d74.0 config (BNB primary, SOL secondary) \u2014 pending P5-4",
+      "status": "complete",
+      "priority": "high",
+      "rationale": "If P5-4 confirms the winners survive pooled training + 90d window, change live config: max_hold_bars=240, meta_label_edge_multiple=4.0, watchlist=[BNBUSDT, SOLUSDT]. NOT before P5-4.",
+      "added_at": "2026-06-02T07:26:37",
+      "completed_at": "2026-06-02T08:08:15",
+      "notes": "Cancelled \u2014 no validated winner to wire. Runbook updated with do-not-execute banner."
+    },
+    {
+      "id": "P5-6",
+      "title": "Walk-forward validation instead of single train/test split",
+      "status": "queued",
+      "priority": "high",
+      "rationale": "The P5-3 finding was regime-luck on a single 70/30 split. Walk-forward with sliding 30d-train / 7d-test windows would expose regime dependence directly.",
+      "added_at": "2026-06-02T08:08:15"
     }
   ]
 }
