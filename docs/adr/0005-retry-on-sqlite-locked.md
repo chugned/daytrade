@@ -84,3 +84,31 @@ promptly.
   - passthrough for non-wrapped attributes,
   - end-to-end against a real `ObservatoryDB` with concurrent lock.
 - Full daytrade test suite passes (run prior to merge).
+
+
+## 2026-06-02 amendment — extra retry surface (audit gap fix)
+
+A security audit found that the original proxy only wrapped
+``execute`` and ``commit``. ``executemany``, ``executescript``, and
+``rollback`` were falling through ``__getattr__`` unwrapped.
+
+- ``executemany``: bulk-insert paths (e.g. ``research/history.py``
+  kline loader) would surface SQLITE_BUSY directly to the caller.
+- ``executescript``: schema bootstrap at ``__init__`` is on the raw
+  connection (before wrapping), so this gap was only theoretical for
+  the current code. Still wrapped so future schema migrations don't
+  silently lose a lock.
+- ``rollback``: the failure mode is the worst — ``upsert_outcome_
+  and_mark_evaluated`` does ``BEGIN; INSERT; UPDATE; commit`` with
+  ``except: rollback()``. If the original INSERT exhausts retries
+  AND rollback then hits the same lock, the rollback raises and
+  masks the original error, leaving the connection in an
+  open-transaction state. Next call gets "cannot start a
+  transaction within a transaction".
+
+``cursor().execute`` is still not wrapped — the codebase doesn't
+use cursors today. A comment in ``_RetryingConnection.__getattr__``
+flags the assumption.
+
+Added 3 tests in ``tests/test_db_retry_on_locked.py`` covering
+each of the new retry paths.

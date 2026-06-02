@@ -971,6 +971,11 @@ class Observer:
                     _log.info("learning window complete — stopping observer")
                     self._learning_complete = True
                     break
+                # SPEED FIX: cycle period is now ``interval`` wall-clock seconds
+                # (was: ``interval`` extra sleep AFTER the work, which meant
+                # the actual cycle = work_time + interval, and the bot
+                # silently overshot its target cadence by the analysis time).
+                cycle_started = time.monotonic()
                 try:
                     self.run_once()
                     consecutive_failures = 0
@@ -1012,8 +1017,20 @@ class Observer:
                         consecutive_failures,
                     )
                 # Sleep in short slices so Ctrl+C is responsive.
+                # ``total`` is computed as (target cycle period) MINUS
+                # (work elapsed), so the bot hits its configured cadence
+                # when work fits in interval, and runs back-to-back with
+                # no sleep when work exceeds interval (overshoot is
+                # logged via cycle_overshoot_seconds in db_writes).
+                elapsed = time.monotonic() - cycle_started
+                total = max(0.0, interval + extra_sleep - elapsed)
+                if elapsed > interval and extra_sleep == 0:
+                    _log.warning(
+                        "cycle overshot interval: work=%.1fs interval=%ds — "
+                        "consider widening --interval or reducing universe",
+                        elapsed, interval,
+                    )
                 slept = 0.0
-                total = interval + extra_sleep
                 while slept < total and not self._stop:
                     time.sleep(min(1.0, total - slept))
                     slept += 1.0

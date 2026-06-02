@@ -188,13 +188,34 @@ class _RetryingConnection:
     def execute(self, *args: Any, **kwargs: Any) -> Any:
         return self._retry(self._conn.execute, *args, **kwargs)
 
+    def executemany(self, *args: Any, **kwargs: Any) -> Any:
+        # Audit gap fix: bulk-insert paths (e.g. history.py kline loader)
+        # were falling through __getattr__ and not retried.
+        return self._retry(self._conn.executemany, *args, **kwargs)
+
+    def executescript(self, *args: Any, **kwargs: Any) -> Any:
+        # Only fires at __init__ today (schema bootstrap) but defended
+        # so a runtime schema migration path can't silently lose a lock.
+        return self._retry(self._conn.executescript, *args, **kwargs)
+
     def commit(self) -> None:
         self._retry(self._conn.commit)
 
+    def rollback(self) -> None:
+        # Audit gap fix: ``upsert_outcome_and_mark_evaluated`` calls
+        # rollback inside its except branch. If rollback itself hits
+        # SQLITE_BUSY (same contention that caused the original failure),
+        # without retry the transaction stays open + the next call
+        # gets "cannot start a transaction within a transaction".
+        self._retry(self._conn.rollback)
+
     def __getattr__(self, name: str) -> Any:
         # Anything not overridden above falls through to the real
-        # connection — including row_factory, executescript, rollback,
-        # close, in_transaction etc.
+        # connection — including row_factory, close, in_transaction etc.
+        # NOTE: ``cursor()`` returns a Cursor whose own ``execute`` is
+        # NOT wrapped by this proxy. The codebase doesn't use cursors
+        # today; if you add a cursor-based write path, wrap the cursor
+        # too or move the work onto ``conn.execute``.
         return getattr(self._conn, name)
 
 

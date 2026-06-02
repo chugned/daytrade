@@ -180,3 +180,51 @@ def test_observatorydb_writes_succeed_under_contention(tmp_path):
     )
     t.join(timeout=2.0)
     assert not t.is_alive()
+
+
+# ---------------------------------------------------------------------------
+# Audit fix: executemany / executescript / rollback now retried too
+# ---------------------------------------------------------------------------
+
+class _BulkConn:
+    """Fake conn with separate fail-counters per method."""
+    def __init__(self):
+        self.fail_until = {}
+        self.calls = {}
+
+    def _maybe_fail(self, name):
+        self.calls[name] = self.calls.get(name, 0) + 1
+        if self.calls[name] <= self.fail_until.get(name, 0):
+            raise sqlite3.OperationalError("database is locked")
+        return ("ok", name)
+
+    def execute(self, *a, **k): return self._maybe_fail("execute")
+    def executemany(self, *a, **k): return self._maybe_fail("executemany")
+    def executescript(self, *a, **k): return self._maybe_fail("executescript")
+    def commit(self): return self._maybe_fail("commit")
+    def rollback(self): return self._maybe_fail("rollback")
+    def __getattr__(self, name): raise AttributeError(name)
+
+
+def test_executemany_retries_on_locked():
+    fake = _BulkConn(); fake.fail_until["executemany"] = 2
+    wrapped = _RetryingConnection(fake, max_retries=5, base_delay=0.001)
+    assert wrapped.executemany("INSERT INTO x VALUES (?)", [(1,)]) == ("ok", "executemany")
+    assert fake.calls["executemany"] == 3
+
+
+def test_executescript_retries_on_locked():
+    fake = _BulkConn(); fake.fail_until["executescript"] = 1
+    wrapped = _RetryingConnection(fake, max_retries=5, base_delay=0.001)
+    wrapped.executescript("CREATE TABLE y (id INT)")
+    assert fake.calls["executescript"] == 2
+
+
+def test_rollback_retries_on_locked():
+    """Rollback inside a busy transaction (a common contention victim)
+    must retry. Otherwise the original exception is masked + the
+    connection wedges in an open-transaction state."""
+    fake = _BulkConn(); fake.fail_until["rollback"] = 1
+    wrapped = _RetryingConnection(fake, max_retries=5, base_delay=0.001)
+    wrapped.rollback()  # must not raise
+    assert fake.calls["rollback"] == 2
