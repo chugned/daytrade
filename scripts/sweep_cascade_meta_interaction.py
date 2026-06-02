@@ -33,115 +33,27 @@ import pandas as pd
 from joblib import Parallel, delayed
 
 from daytrade.config import AppConfig
-from daytrade.indicators.frame import ohlcv_to_frame
-from daytrade.features.pipeline import FeaturePipeline
-from daytrade.labels.generate import triple_barrier_label
-from daytrade.ml.meta import MetaLabelModel, barrier_distances
+from daytrade.ml.meta import MetaLabelModel
 from daytrade.models import OHLCV
 from daytrade.research.cascade_meta_interaction import (
     SliceMetrics,
     analyze_cascade_meta_interaction,
 )
-from daytrade.research.history import download_history
+from daytrade.research.sweep_helpers import (
+    load_or_build_frame,
+    pull_candles,
+    score_test_frame,
+    train_test_split,
+)
 
 
 _DEFAULT_SYMBOLS = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,LINKUSDT,AVAXUSDT"
 _DEFAULT_COST_BPS = 24.0  # 10bp fee × 2 + 2bp base slippage × 2
 
-# Parquet cache for built feature/label frames. Building a frame for
-# 90d × 1m takes ~20s (feature engineering + triple-barrier labels);
-# the parquet round-trip is ~1s. Re-running the sweep with the same
-# (symbol, days) is then near-free instead of full-recompute.
-_FRAME_CACHE_DIR = Path("artifacts/cache/cascade_meta_frames")
 
-
-def _pull(symbol: str, days: int) -> List[OHLCV]:
-    return download_history(symbol, interval="1m", days=days)
-
-
-def _frame_cache_path(symbol: str, days: int, max_hold: int = 48) -> Path:
-    """Cache key includes the horizon — different ``max_hold_bars`` values
-    produce different triple-barrier labels AND different forward returns,
-    so they MUST live in separate cache files. The 48 default matches
-    AppConfig.risk.max_hold_bars at the time this file was originally
-    written."""
-    return _FRAME_CACHE_DIR / f"{symbol}_{days}d_h{max_hold}.parquet"
-
-
-def _train_test_split(frame: pd.DataFrame, train_frac: float = 0.7) -> tuple:
-    """Chronological split (no shuffle — preserves train-before-test order)."""
-    cut = int(len(frame) * train_frac)
-    return frame.iloc[:cut].copy(), frame.iloc[cut:].copy()
-
-
-def _build_per_symbol_frame(candles: List[OHLCV], config: AppConfig) -> Optional[pd.DataFrame]:
-    """Feature frame joined with triple-barrier labels + horizon return.
-
-    Returns ``None`` when there isn't enough resolvable history.
-    """
-    if len(candles) < 200:
-        return None
-    frame = ohlcv_to_frame(candles)
-    pipe = FeaturePipeline(config.features, config.indicators)
-    feats = pipe.transform_frame(frame)
-    stop_d, target_d = barrier_distances(frame, config)
-    max_hold = max(1, config.risk.max_hold_bars)
-    labels = triple_barrier_label(frame, stop_d, target_d, max_hold)
-
-    # Forward return at the same horizon as the label (vertical barrier).
-    # The triple-barrier return is bounded by stop/target; raw close-to-close
-    # at the same window gives a clean apples-to-apples slice metric.
-    close = frame["close"].astype(float)
-    fwd_return_bps = (close.shift(-max_hold) - close) / close * 10_000.0
-
-    joined = feats.join(labels, how="inner")
-    joined["forward_return_bps"] = fwd_return_bps
-    joined = joined.dropna()
-    return joined
-
-
-def _load_or_build_frame(symbol: str, days: int, config: AppConfig,
-                         use_cache: bool = True) -> Optional[pd.DataFrame]:
-    """Cached wrapper around _build_per_symbol_frame. Saves to parquet
-    keyed by ``(symbol, days, max_hold_bars)``. Reading the cached
-    file is ~20x faster than rebuilding from scratch on 90d × 1m bars.
-
-    The candle source (Binance public API + SQLite cache) is itself
-    keyed by symbol+interval+days; we only cache the EXPENSIVE
-    feature engineering + label step, not the candle pull.
-    """
-    cache_path = _frame_cache_path(symbol, days, max(1, config.risk.max_hold_bars))
-    if use_cache and cache_path.exists():
-        try:
-            return pd.read_parquet(cache_path)
-        except (OSError, ValueError):
-            # Corrupted cache — rebuild
-            pass
-    candles = _pull(symbol, days)
-    frame = _build_per_symbol_frame(candles, config)
-    if frame is None or frame.empty:
-        return frame
-    if use_cache:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            frame.to_parquet(cache_path)
-        except (OSError, ImportError):
-            # pyarrow not available or write failed — return uncached frame
-            pass
-    return frame
-
-
-def _score_test_frame(model: MetaLabelModel, test_df: pd.DataFrame) -> Optional[pd.Series]:
-    """Vectorised predict_proba over the test slice's feature rows."""
-    feature_cols = model.feature_names
-    if not all(c in test_df.columns for c in feature_cols):
-        return None
-    X_test = test_df[feature_cols].to_numpy(dtype=float)
-    classes = list(model._pipeline.classes_)
-    proba_all = model._pipeline.predict_proba(X_test)
-    if 1 in classes:
-        return pd.Series(proba_all[:, classes.index(1)], index=test_df.index)
-    return pd.Series(1.0 if classes[0] == 1 else 0.0, index=test_df.index)
+# Frame build / cache / split / score helpers all moved to
+# daytrade.research.sweep_helpers so every sweep script shares the
+# same implementation. See that module for full docs.
 
 
 def _evaluate_symbol(symbol: str, days: int, config: AppConfig,
@@ -152,24 +64,24 @@ def _evaluate_symbol(symbol: str, days: int, config: AppConfig,
 
     This entry-point is picklable so joblib can fan out across CPUs.
     """
-    frame = _load_or_build_frame(symbol, days, config, use_cache=use_cache)
+    frame = load_or_build_frame(symbol, days, config, use_cache=use_cache)
     if frame is None or len(frame) < 200:
         return None
-    train_df, test_df = _train_test_split(frame, train_frac=0.7)
+    train_df, test_df = train_test_split(frame, train_frac=0.7)
     if len(train_df) < 100 or len(test_df) < 30:
         return None
 
     # MetaLabelModel.train takes candles, not a frame — re-pull (cached at
     # the SQLite layer, ~instant for the 2nd call) and slice to the train
     # window proportionally.
-    candles = _pull(symbol, days)
+    candles = pull_candles(symbol, days)
     cut = int(len(candles) * 0.7)
     model = MetaLabelModel()
     train_result = model.train([candles[:cut]], config)
     if train_result is None or not model.is_trained:
         return None
 
-    proba = _score_test_frame(model, test_df)
+    proba = score_test_frame(model, test_df)
     if proba is None:
         return None
 
@@ -204,14 +116,14 @@ def _evaluate_pooled(symbols: List[str], days: int,
     per_symbol: Dict[str, tuple] = {}
     pooled_train_candles: List[List[OHLCV]] = []
     for sym in symbols:
-        frame = _load_or_build_frame(sym, days, config, use_cache=use_cache)
+        frame = load_or_build_frame(sym, days, config, use_cache=use_cache)
         if frame is None or len(frame) < 200:
             continue
-        train_df, test_df = _train_test_split(frame, train_frac=0.7)
+        train_df, test_df = train_test_split(frame, train_frac=0.7)
         if len(train_df) < 100 or len(test_df) < 30:
             continue
         per_symbol[sym] = (train_df, test_df)
-        candles = _pull(sym, days)
+        candles = pull_candles(sym, days)
         cut = int(len(candles) * 0.7)
         pooled_train_candles.append(candles[:cut])
 
@@ -226,7 +138,7 @@ def _evaluate_pooled(symbols: List[str], days: int,
 
     results: List[Dict] = []
     for sym, (_train_df, test_df) in per_symbol.items():
-        proba = _score_test_frame(model, test_df)
+        proba = score_test_frame(model, test_df)
         if proba is None:
             continue
         metrics = analyze_cascade_meta_interaction(

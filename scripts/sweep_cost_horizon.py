@@ -43,17 +43,14 @@ import pandas as pd
 from joblib import Parallel, delayed
 
 from daytrade.config import AppConfig
-from daytrade.indicators.frame import ohlcv_to_frame
-from daytrade.features.pipeline import FeaturePipeline
-from daytrade.labels.generate import triple_barrier_label
-from daytrade.ml.meta import MetaLabelModel, barrier_distances
+from daytrade.ml.meta import MetaLabelModel
 from daytrade.models import OHLCV
 from daytrade.research.cascade_meta_interaction import (
     SliceMetrics,
     analyze_cascade_meta_interaction,
 )
 from daytrade.research.cost_horizon import find_winners, recompute_net
-from daytrade.research.history import download_history
+from daytrade.research.sweep_helpers import build_per_symbol_frame, pull_candles
 
 
 _DEFAULT_SYMBOLS = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,LINKUSDT,AVAXUSDT"
@@ -76,19 +73,8 @@ def _config_with_horizon(base: AppConfig, horizon_minutes: int) -> AppConfig:
 
 
 def _build_frame(candles: List[OHLCV], config: AppConfig) -> Optional[pd.DataFrame]:
-    if len(candles) < 200:
-        return None
-    frame = ohlcv_to_frame(candles)
-    pipe = FeaturePipeline(config.features, config.indicators)
-    feats = pipe.transform_frame(frame)
-    stop_d, target_d = barrier_distances(frame, config)
-    max_hold = max(1, config.risk.max_hold_bars)
-    labels = triple_barrier_label(frame, stop_d, target_d, max_hold)
-    close = frame["close"].astype(float)
-    fwd_return_bps = (close.shift(-max_hold) - close) / close * 10_000.0
-    joined = feats.join(labels, how="inner")
-    joined["forward_return_bps"] = fwd_return_bps
-    return joined.dropna()
+    # Thin alias retained for now; full implementation in sweep_helpers.
+    return build_per_symbol_frame(candles, config)
 
 
 def _evaluate_cell(symbol: str, horizon_minutes: int, days: int,
@@ -99,7 +85,7 @@ def _evaluate_cell(symbol: str, horizon_minutes: int, days: int,
     every (gate_mult, cost) combination. Returns the flat list of cells.
     """
     config = _config_with_horizon(base_config, horizon_minutes)
-    candles = download_history(symbol, interval="1m", days=days)
+    candles = pull_candles(symbol, days)
     if len(candles) < 200:
         return []
 
