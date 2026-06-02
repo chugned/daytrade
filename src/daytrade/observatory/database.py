@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS market_snapshots (
@@ -126,19 +127,94 @@ def _iso(value: Any) -> str:
     return str(value)
 
 
+def _is_locked_error(exc: sqlite3.OperationalError) -> bool:
+    """Return True when this OperationalError is SQLITE_BUSY/SQLITE_LOCKED.
+
+    SQLite stringifies the lock errors as 'database is locked' or
+    'database is busy' depending on which lock was contended. Other
+    OperationalErrors (syntax errors, missing tables, ALTER conflicts)
+    must NOT trigger a retry — they're real bugs and silent retry
+    would mask them.
+    """
+    msg = str(exc).lower()
+    return "locked" in msg or "busy" in msg
+
+
+class _RetryingConnection:
+    """Transparent ``sqlite3.Connection`` proxy that retries write ops on
+    SQLITE_BUSY/SQLITE_LOCKED with exponential backoff.
+
+    ``sqlite3.connect(timeout=...)`` already absorbs short waits at the
+    VFS layer, but doesn't help with higher-level contention like a
+    concurrent ``PRAGMA wal_checkpoint(TRUNCATE)`` or a long-held
+    read snapshot. Nighttrade observed exactly this bug on 2026-06-02
+    (P4-2, ADR-0006 in that repo) and the proxy was proven there;
+    daytrade uses the same SQLite write surface so this is a
+    symmetric defensive port — see ADR-0005.
+
+    Wraps ``execute`` and ``commit``; on lock/busy error sleeps and
+    retries up to ``max_retries`` times (default 5 attempts, 0.05s →
+    2s backoff). Other errors re-raise immediately. All other
+    attributes (``row_factory``, ``executescript``, ``close``, …)
+    pass through unchanged.
+    """
+
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        max_retries: int = 5,
+        base_delay: float = 0.05,
+        max_delay: float = 2.0,
+    ) -> None:
+        self._conn = conn
+        self._max_retries = max_retries
+        self._base_delay = base_delay
+        self._max_delay = max_delay
+
+    def _retry(self, op: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        delay = self._base_delay
+        for attempt in range(self._max_retries + 1):
+            try:
+                return op(*args, **kwargs)
+            except sqlite3.OperationalError as exc:
+                if not _is_locked_error(exc):
+                    raise
+                if attempt >= self._max_retries:
+                    raise
+                time.sleep(delay)
+                delay = min(delay * 2, self._max_delay)
+
+    def execute(self, *args: Any, **kwargs: Any) -> Any:
+        return self._retry(self._conn.execute, *args, **kwargs)
+
+    def commit(self) -> None:
+        self._retry(self._conn.commit)
+
+    def __getattr__(self, name: str) -> Any:
+        # Anything not overridden above falls through to the real
+        # connection — including row_factory, executescript, rollback,
+        # close, in_transaction etc.
+        return getattr(self._conn, name)
+
+
 class ObservatoryDB:
     """Thin, dependency-free DAO over the observatory SQLite database."""
 
     def __init__(self, path: Path | str = DEFAULT_DB_PATH) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self.path), check_same_thread=False,
-                                     timeout=10.0)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
-        self._conn.executescript(_SCHEMA)
-        self._conn.commit()
+        # ADR-0005: timeout=30s gives sqlite's built-in busy_timeout
+        # ample headroom for short bursts; _RetryingConnection on top
+        # catches the residual ``database is locked`` cases that still
+        # bubble to Python (concurrent prune-job wal_checkpoint, etc.).
+        raw = sqlite3.connect(str(self.path), check_same_thread=False, timeout=30.0)
+        raw.row_factory = sqlite3.Row
+        raw.execute("PRAGMA journal_mode=WAL")
+        raw.execute("PRAGMA synchronous=NORMAL")
+        raw.executescript(_SCHEMA)
+        raw.commit()
+        self._conn = _RetryingConnection(raw)
         # Human-readable, append-only log of every DB write — tailed live by
         # the dashboard's "Database" view.
         self._writelog_path = _REPO_ROOT / "logs" / "db-writes.log"
