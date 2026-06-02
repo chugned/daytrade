@@ -5,7 +5,8 @@ PY ?= python3
 
 .PHONY: help install learn research observe dashboard report status watchlist test demo backtest clean \
         research-cascade research-cascade-fresh research-cascade-all \
-        research-cost-horizon research-p5-4-validate simulate-winner
+        research-cost-horizon research-p5-4-validate simulate-winner \
+        db-sizes db-compact-daytrade db-compact-nighttrade
 
 help:
 	@echo "daytrade — make targets"
@@ -31,6 +32,11 @@ help:
 	@echo "  make research-p5-4-validate  pooled 90d validation of P5-3 winners"
 	@echo "  make simulate-winner         equity curve for the headline cell (PNG to artifacts/)"
 	@echo "                               override: SIM_SYM=SOLUSDT SIM_HZ=240 SIM_GATE=3.0"
+	@echo ""
+	@echo "  scale / operational:"
+	@echo "  make db-sizes                size of both bot observatory.db + WAL"
+	@echo "  make db-compact-daytrade     VACUUM daytrade DB (bot must be stopped)"
+	@echo "  make db-compact-nighttrade   VACUUM nighttrade DB (bot must be stopped)"
 
 install:
 	$(PY) -m pip install -e ".[dev]"
@@ -126,3 +132,37 @@ simulate-winner:
 	PYTHONPATH=src $(PY) scripts/simulate_winner.py \
 	    --symbol $(SIM_SYM) --horizon $(SIM_HZ) \
 	    --gate-multiple $(SIM_GATE) --days $(SIM_DAYS) --cost-bps 24.0
+
+# ----- DB compaction (SCALE) ----------------------------------------------
+# SQLite never shrinks the file on its own — DELETE just marks pages free.
+# VACUUM rebuilds the file, reclaiming space. Requires exclusive access,
+# so the bot must be stopped during the compaction. Targets check for
+# active writers and refuse if any are found.
+
+db-compact-daytrade:
+	@if pgrep -f "daytrade learn" > /dev/null; then \
+	  echo "ERROR: daytrade is running; stop it first ('kill -TERM \$$(pgrep -f \"daytrade learn\")' then wait)"; exit 1; \
+	fi
+	@before=$$(stat -f %z artifacts/observatory.db 2>/dev/null || stat -c %s artifacts/observatory.db); \
+	  echo "before: $$before bytes"; \
+	  sqlite3 artifacts/observatory.db "VACUUM"; \
+	  after=$$(stat -f %z artifacts/observatory.db 2>/dev/null || stat -c %s artifacts/observatory.db); \
+	  pct=$$(echo "scale=1; (1 - $$after/$$before) * 100" | bc); \
+	  echo "after:  $$after bytes (saved $${pct}%)"
+
+db-compact-nighttrade:
+	@if pgrep -f "nighttrade observe" > /dev/null; then \
+	  echo "ERROR: nighttrade observer is running; launchctl bootout it first then re-bootstrap"; exit 1; \
+	fi
+	@before=$$(stat -f %z $$HOME/nighttrade/artifacts/observatory.db 2>/dev/null || stat -c %s $$HOME/nighttrade/artifacts/observatory.db); \
+	  echo "before: $$before bytes"; \
+	  sqlite3 $$HOME/nighttrade/artifacts/observatory.db "VACUUM"; \
+	  after=$$(stat -f %z $$HOME/nighttrade/artifacts/observatory.db 2>/dev/null || stat -c %s $$HOME/nighttrade/artifacts/observatory.db); \
+	  pct=$$(echo "scale=1; (1 - $$after/$$before) * 100" | bc); \
+	  echo "after:  $$after bytes (saved $${pct}%)"
+
+db-sizes:
+	@echo "daytrade:"
+	@ls -lh artifacts/observatory.db artifacts/observatory.db-wal 2>/dev/null | awk '{print "  ", $$NF, $$5}'
+	@echo "nighttrade:"
+	@ls -lh $$HOME/nighttrade/artifacts/observatory.db $$HOME/nighttrade/artifacts/observatory.db-wal 2>/dev/null | awk '{print "  ", $$NF, $$5}'
