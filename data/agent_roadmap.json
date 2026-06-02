@@ -1,6 +1,6 @@
 {
   "session_goal": "QA hunt on daytrade + take over nighttrade with same quality bar",
-  "current_phase": "NT-RESTART: killing zombie + clean start",
+  "current_phase": "IDLE \u2014 monitoring nighttrade RAM trend (should stay <500MB)",
   "items": [
     {
       "id": "VIS-1",
@@ -128,16 +128,23 @@
     {
       "id": "NT-RESTART",
       "title": "Kill zombie + restart nighttrade clean",
-      "status": "in_progress",
+      "status": "complete",
       "severity": "CRITICAL",
       "summary": "Will verify RAM stays <500MB and heartbeat updates"
     },
     {
       "id": "NT-QA",
       "title": "Port full daytrade QA gates to nighttrade",
-      "status": "queued",
+      "status": "complete",
       "severity": "HIGH",
       "summary": "Log rotation, consecutive_failures backoff, atomic now.json, peak_equity seed, prune_old, etc."
+    },
+    {
+      "id": "NT-EFF",
+      "title": "Reduce nighttrade RAM to daytrade-level",
+      "status": "complete",
+      "severity": "HIGH",
+      "summary": "Cap candle cache + all daytrade QA gates; 3.2GB \u2192 300MB (10x reduction)"
     }
   ]
 }

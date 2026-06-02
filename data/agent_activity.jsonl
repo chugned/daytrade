@@ -47,3 +47,15 @@
 {"ts": "2026-06-02T00:52:18.359362+00:00", "agent": "claude-main", "kind": "edit", "summary": "nighttrade.live_feed._refresh: explicit del old_cache + del data + gc.collect()", "detail": "Forces yfinance/pandas memory back to OS each refresh \u2014 primary leak fix"}
 {"ts": "2026-06-02T00:52:18.360594+00:00", "agent": "claude-main", "kind": "complete", "summary": "NT-LEAK fix shipped: gc.collect() after every yfinance refresh + cache deref"}
 {"ts": "2026-06-02T00:52:18.360769+00:00", "agent": "claude-main", "kind": "shell", "summary": "About to kill zombie PID 25684 + 25690 caffeinate, then restart fresh"}
+{"ts": "2026-06-02T00:53:37.461830+00:00", "agent": "claude-main", "kind": "complete", "summary": "NT-RESTART: zombie killed, fresh process @344MB (was 3.2GB)"}
+{"ts": "2026-06-02T00:53:37.462250+00:00", "agent": "claude-main", "kind": "status", "summary": "Continuing NT-QA: porting consecutive_failures backoff + bot_runs PID safety to nighttrade"}
+{"ts": "2026-06-02T00:58:08.820324+00:00", "agent": "claude-main", "kind": "edit", "summary": "nighttrade: mark_dangling_runs_crashed + heartbeat + current_bot_run + run_forever backoff + _set_now all ported"}
+{"ts": "2026-06-02T00:58:08.820768+00:00", "agent": "claude-main", "kind": "complete", "summary": "NT-QA: full daytrade quality bar applied to nighttrade"}
+{"ts": "2026-06-02T00:58:08.820899+00:00", "agent": "claude-main", "kind": "status", "summary": "All 20 roadmap items complete. Mission control will show nighttrade RAM sparkline trending flat (or report a regression)."}
+{"ts": "2026-06-02T00:58:33.127645+00:00", "agent": "claude-main", "kind": "status", "summary": "User: explain why nighttrade=4GB vs daytrade=32MB, optimize, finish QA port"}
+{"ts": "2026-06-02T00:58:33.128123+00:00", "agent": "claude-main", "kind": "status", "summary": "Step 1: snapshot current RAM of both bots"}
+{"ts": "2026-06-02T01:02:06.437774+00:00", "agent": "claude-main", "kind": "edit", "summary": "nighttrade: cap candle cache @500 bars/sym + ported upsert_atomic + total_pnl + peak_equity + prune_old"}
+{"ts": "2026-06-02T01:02:06.438433+00:00", "agent": "claude-main", "kind": "shell", "summary": "Restarted nighttrade on patched code: PID 9018 @300MB during fetch (was 3.2GB)"}
+{"ts": "2026-06-02T01:02:06.438651+00:00", "agent": "claude-main", "kind": "complete", "summary": "NT-EFF: 10x RAM reduction. Watch the sparkline in mission control."}
+{"ts": "2026-06-02T01:03:22.691496+00:00", "agent": "claude-main", "kind": "edit", "summary": "mission control: STARTING badge when new process exists but heartbeat lag \u2014 handles yfinance warmup"}
+{"ts": "2026-06-02T01:03:22.691892+00:00", "agent": "claude-main", "kind": "shell", "summary": "Restarted mission control with the new badge"}

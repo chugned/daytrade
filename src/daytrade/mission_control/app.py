@@ -227,15 +227,36 @@ _INDEX_HTML = """<!doctype html>
 <script>
 function escapeHtml(s) { return String(s||'').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'})[c]); }
 
+function parseEtimeSeconds(etime) {
+  // ps etime format: 'MM:SS' or 'HH:MM:SS' or 'D-HH:MM:SS'
+  if (!etime) return 0;
+  let days = 0, rest = etime;
+  if (rest.includes('-')) { const p = rest.split('-'); days = +p[0]; rest = p[1]; }
+  const parts = rest.split(':').map(Number);
+  let s = 0;
+  if (parts.length === 3) s = parts[0]*3600 + parts[1]*60 + parts[2];
+  else if (parts.length === 2) s = parts[0]*60 + parts[1];
+  else s = parts[0]||0;
+  return s + days*86400;
+}
+
 function renderBots(data) {
   const grid = document.getElementById('grid');
   grid.innerHTML = '';
   for (const bot of data.bots) {
     const aliveCount = bot.processes.length;
     const ageSec = bot.heartbeat_age_seconds;
+    // The youngest process — what's actually serving work right now
+    const procUptimes = bot.processes.map(p => parseEtimeSeconds(p.etime));
+    const youngestProcSec = procUptimes.length ? Math.min(...procUptimes) : Infinity;
     let pillClass = 'bad', pillText = 'OFFLINE';
     if (aliveCount > 0 && ageSec !== null && ageSec < 600) {
       pillClass = 'ok'; pillText = 'ONLINE';
+    } else if (aliveCount > 0 && youngestProcSec < (ageSec || Infinity)) {
+      // New process exists but its heartbeat hasn't landed yet =
+      // bot is in CLI startup (e.g. nighttrade's yfinance warmup).
+      pillClass = 'warn';
+      pillText = 'STARTING (' + Math.round(youngestProcSec) + 's)';
     } else if (aliveCount > 0) {
       pillClass = 'warn'; pillText = 'STALE HEARTBEAT';
     } else if (ageSec !== null && ageSec < 600) {
