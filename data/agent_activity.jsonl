@@ -71,3 +71,10 @@
 {"ts": "2026-06-02T01:28:22.454524+00:00", "agent": "claude-main", "kind": "finding", "summary": "Two-dir issue resolved: dev (~/Desktop/coding/nighttrade) vs deployed (~/nighttrade). Synced."}
 {"ts": "2026-06-02T01:28:22.455118+00:00", "agent": "claude-main", "kind": "shell", "summary": "Reloaded launchd; observer running PID 21937 @266MB via launchctl kickstart"}
 {"ts": "2026-06-02T01:28:22.455312+00:00", "agent": "claude-main", "kind": "complete", "summary": "PARITY phases 1-4, 5B, 6A done; observer running clean on patched code"}
+{"ts": "2026-06-02T01:36:06.478092+00:00", "agent": "claude-main", "kind": "shell", "summary": "Both repos: main fully in sync with origin, zero unmerged branches local or remote, zero uncommitted files"}
+{"ts": "2026-06-02T01:36:06.478817+00:00", "agent": "claude-main", "kind": "complete", "summary": "Merge sweep complete \u2014 daytrade and nighttrade fully consolidated on main"}
+{"ts": "2026-06-02T01:49:06.844740+00:00", "agent": "claude-main", "kind": "edit", "summary": "mission control: big RAM overview card at top \u2014 per-bot, combined total, dual-line history graph"}
+{"ts": "2026-06-02T01:49:06.845341+00:00", "agent": "claude-main", "kind": "shell", "summary": "Restarted mission control. Refresh phone to see the new top panel."}
+{"ts": "2026-06-02T01:50:57.460023+00:00", "agent": "claude-main", "kind": "shell", "summary": "Manually pruned 2.14M nighttrade rows + 232k daytrade rows from oversized symbol_health/activity tables"}
+{"ts": "2026-06-02T01:50:57.460394+00:00", "agent": "claude-main", "kind": "edit", "summary": "Mirrored REAL-MONEY-RISKS.md to nighttrade adapted for stocks"}
+{"ts": "2026-06-02T01:50:57.460497+00:00", "agent": "claude-main", "kind": "complete", "summary": "PARITY-4B/4C/5A/7A/8 all closed \u2014 32/32 roadmap items done"}

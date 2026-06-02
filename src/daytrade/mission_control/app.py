@@ -148,9 +148,14 @@ def db_summary(db_path: Optional[Path]) -> Dict[str, Any]:
         open_n = con.execute(
             "SELECT COUNT(*) FROM paper_trades WHERE status='open'"
         ).fetchone()
+        # Belt+suspenders: only count REAL errors. Rows whose context
+        # starts with 'alert:' are informational market/learning alerts
+        # (e.g. 'VETUSDT illiquid') that were historically miswritten to
+        # the errors table — they're not bugs, they shouldn't trigger a
+        # yellow warning banner.
         errors_24h = con.execute(
             "SELECT COUNT(*) FROM errors WHERE ts >= "
-            "datetime('now', '-1 day')"
+            "datetime('now', '-1 day') AND (context IS NULL OR context NOT LIKE 'alert:%')"
         ).fetchone()
         con.close()
     except sqlite3.Error as exc:
@@ -227,6 +232,14 @@ _INDEX_HTML = """<!doctype html>
 </head>
 <body>
 <h1>Mission control <span class="meta" id="updated"></span></h1>
+
+<section class="card" id="ram-overview" style="margin-bottom:18px;">
+  <div style="font-size:.72rem;color:#98a0ab;letter-spacing:.04em;text-transform:uppercase;margin-bottom:8px;">
+    Memory used right now
+  </div>
+  <div id="ram-overview-body" style="display:flex;gap:12px;flex-wrap:wrap;"></div>
+  <div id="ram-overview-combined" style="margin-top:14px;"></div>
+</section>
 
 <h2 class="section">Trading bots</h2>
 <div class="grid" id="grid"></div>
@@ -512,6 +525,82 @@ function renderActivityTimeline(entries) {
   return html;
 }
 
+function renderRamOverview(data) {
+  const body = document.getElementById('ram-overview-body');
+  const combined = document.getElementById('ram-overview-combined');
+  body.innerHTML = '';
+  let totalMb = 0;
+  for (const bot of data.bots) {
+    const rss = bot.total_rss_mb || 0;
+    totalMb += rss;
+    let colour = '#6dd58c';
+    if (rss > 1024) colour = '#ff6b6b';
+    else if (rss > 500) colour = '#f7c163';
+    const alive = bot.processes.length > 0;
+    body.innerHTML += `<div style="flex:1;min-width:140px;background:#0a0d12;border-radius:8px;padding:12px;">
+      <div style="font-size:.72rem;color:#98a0ab;">${escapeHtml(bot.name)}</div>
+      <div style="font-size:1.6rem;font-weight:700;color:${colour};font-variant-numeric:tabular-nums;">
+        ${humanBytes(rss)}
+      </div>
+      <div style="font-size:.7rem;color:#6c727b;">
+        ${alive ? bot.processes.length + ' process' + (bot.processes.length!==1?'es':'') : 'not running'}
+      </div>
+    </div>`;
+  }
+  // Combined total
+  body.innerHTML += `<div style="flex:1;min-width:140px;background:#0a0d12;border-radius:8px;padding:12px;border:1px solid #2a2f38;">
+    <div style="font-size:.72rem;color:#98a0ab;">All bots combined</div>
+    <div style="font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums;">
+      ${humanBytes(totalMb)}
+    </div>
+    <div style="font-size:.7rem;color:#6c727b;">
+      out of ${(16384/1024).toFixed(0)} GB total laptop RAM (~${(totalMb/16384*100).toFixed(1)}%)
+    </div>
+  </div>`;
+
+  // Combined stacked sparkline: each bot a different colour
+  const allSeries = data.bots
+    .filter(b => (b.ram_history || []).length > 1)
+    .map(b => ({name: b.name, points: b.ram_history}));
+  if (allSeries.length > 0) {
+    const W = 600, H = 70;
+    // Build a shared time axis
+    const allTs = [];
+    for (const s of allSeries) for (const p of s.points) allTs.push(new Date(p.ts).getTime());
+    if (allTs.length < 2) { combined.innerHTML = ''; return; }
+    const tMin = Math.min(...allTs), tMax = Math.max(...allTs);
+    const tRange = Math.max(1, tMax - tMin);
+    const allVals = allSeries.flatMap(s => s.points.map(p => p.rss_mb || 0));
+    const vMax = Math.max(...allVals, 1);
+    const colours = {daytrade: '#6db3ff', nighttrade: '#c78dff'};
+
+    let svg = `<div style="font-size:.72rem;color:#98a0ab;margin-bottom:4px;">Memory over time (last hour)</div>
+      <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="background:#0a0d12;border-radius:4px;">`;
+    // Y gridline at vMax/2
+    svg += `<line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}" stroke="#2a2f38" stroke-width="0.5" stroke-dasharray="2,3"/>`;
+    for (const s of allSeries) {
+      const colour = colours[s.name] || '#98a0ab';
+      const pts = s.points.map(p => {
+        const x = ((new Date(p.ts).getTime() - tMin) / tRange) * W;
+        const y = H - ((p.rss_mb || 0) / vMax) * (H - 4) - 2;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      svg += `<polyline points="${pts}" fill="none" stroke="${colour}" stroke-width="2"/>`;
+    }
+    svg += `</svg>`;
+    // Legend
+    svg += `<div style="font-size:.7rem;color:#6c727b;display:flex;gap:14px;margin-top:4px;">`;
+    for (const s of allSeries) {
+      const colour = colours[s.name] || '#98a0ab';
+      svg += `<span><span style="display:inline-block;width:10px;height:10px;background:${colour};border-radius:2px;vertical-align:middle;"></span> ${escapeHtml(s.name)}</span>`;
+    }
+    svg += `<span style="margin-left:auto;">peak: ${humanBytes(vMax)}</span></div>`;
+    combined.innerHTML = svg;
+  } else {
+    combined.innerHTML = '<div style="font-size:.75rem;color:#98a0ab;">Memory history graph will appear once enough samples are collected (~30 seconds).</div>';
+  }
+}
+
 async function refresh() {
   try {
     const [stateR, actR, rmR] = await Promise.all([
@@ -524,6 +613,7 @@ async function refresh() {
     const rm = await rmR.json();
     document.getElementById('updated').textContent =
         '· ' + new Date(data.now).toLocaleTimeString();
+    renderRamOverview(data);
     renderBots(data);
 
     const agentGrid = document.getElementById('agent-grid');

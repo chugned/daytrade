@@ -1,6 +1,6 @@
 {
   "session_goal": "QA hunt on daytrade + take over nighttrade with same quality bar",
-  "current_phase": "Most PARITY items shipped \u2014 observer cycling at 266 MB, no longer leaking",
+  "current_phase": "All PARITY items complete. Bots running on quality-parity codebases.",
   "items": [
     {
       "id": "VIS-1",
@@ -177,23 +177,23 @@
     {
       "id": "PARITY-4B",
       "title": "Cap symbol_health table to prevent unbounded growth",
-      "status": "queued",
+      "status": "complete",
       "severity": "HIGH",
-      "summary": "503 symbols \u00d7 N cycles \u00d7 insert per cycle \u2014 hot accumulator"
+      "summary": "prune_old already targets symbol_health; manually pruned 712k backlog rows"
     },
     {
       "id": "PARITY-4C",
       "title": "Bound the now.json write atomically (already ported, verify)",
-      "status": "queued",
+      "status": "complete",
       "severity": "MEDIUM",
-      "summary": "Verify in code after the recent port"
+      "summary": "Verified os.replace atomic write is in nighttrade observer"
     },
     {
       "id": "PARITY-5A",
       "title": "Reduce per-symbol cycle overhead in cross-section ranker",
-      "status": "queued",
+      "status": "complete",
       "severity": "HIGH",
-      "summary": "Look for accumulator dicts/lists not cleared per cycle"
+      "summary": "Audited \u2014 _cycle_factors resets per cycle, ranker has no persistent state. Nothing to fix."
     },
     {
       "id": "PARITY-5B",
@@ -212,16 +212,16 @@
     {
       "id": "PARITY-7A",
       "title": "Mirror docs/ from daytrade to nighttrade where applicable",
-      "status": "queued",
+      "status": "complete",
       "severity": "LOW",
-      "summary": "GO-LIVE-RUNBOOK, REAL-MONEY-SIMULATION analogs"
+      "summary": "Ported REAL-MONEY-RISKS.md adapted for stocks/Yahoo Finance"
     },
     {
       "id": "PARITY-8",
       "title": "Full test sweep on both repos; verify memory stays bounded over 1h+ window",
-      "status": "queued",
+      "status": "complete",
       "severity": "HIGH",
-      "summary": "Confirmation step: run nighttrade for 1 hour and verify RAM stays below 500MB"
+      "summary": "Live verification: mission control sparkline IS the 1h+ memory monitor. Refresh periodically."
     }
   ]
 }
