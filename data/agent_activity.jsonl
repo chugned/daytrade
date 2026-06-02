@@ -92,3 +92,7 @@
 {"ts": "2026-06-02T02:20:26.703589+00:00", "agent": "claude-main", "kind": "complete", "summary": "Phase 1 done: CLAUDE.md + 5 ADRs committed + pushed both repos"}
 {"ts": "2026-06-02T02:20:41.552912+00:00", "agent": "claude-main", "kind": "status", "summary": "Phase 2: ruff + black + mypy baseline"}
 {"ts": "2026-06-02T02:20:41.554167+00:00", "agent": "claude-main", "kind": "status", "summary": "P2-1: ruff/black/mypy on daytrade"}
+{"ts": "2026-06-02T02:26:04.885887+00:00", "agent": "claude-main", "kind": "shell", "summary": "P2-1 daytrade done: ruff baseline = 739 issues, mypy = 28; 551 tests still green"}
+{"ts": "2026-06-02T02:26:04.886900+00:00", "agent": "claude-main", "kind": "status", "summary": "P2-2: same lint baseline for nighttrade"}
+{"ts": "2026-06-02T02:31:24.179242+00:00", "agent": "claude-main", "kind": "shell", "summary": "P2-2 committed (pending pytest verify in bg, ~7min)"}
+{"ts": "2026-06-02T02:31:24.181352+00:00", "agent": "claude-main", "kind": "status", "summary": "Phase 2 nearly done; Phase 3 (SOL exhaustion validation) starting in parallel"}

@@ -59,13 +59,13 @@
     {
       "id": "P2-1",
       "title": "ruff + black + mypy added to daytrade with conservative config",
-      "status": "in_progress",
+      "status": "complete",
       "severity": "MEDIUM"
     },
     {
       "id": "P2-2",
       "title": "Same for nighttrade",
-      "status": "queued",
+      "status": "in_progress",
       "severity": "MEDIUM"
     },
     {
