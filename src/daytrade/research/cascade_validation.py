@@ -45,6 +45,13 @@ def _forward_return_bps(candles: List[OHLCV], i: int,
     return float((px_then - px_now) / px_now * 10_000.0)
 
 
+#: detect_cascade only needs ~22 bars of context (max of ATR-14 and
+#: vol-baseline window=20, +1 for the prior bar in exhaustion check).
+#: A 60-bar trailing window is comfortable headroom and keeps the sweep
+#: O(N · 60) instead of O(N²).
+_DETECTOR_LOOKBACK_BARS = 60
+
+
 def _validate_one(symbol: str, candles: List[OHLCV],
                   horizon_minutes: int) -> SymbolValidation:
     """Walk the bar series and aggregate forward returns at exhaustion bars."""
@@ -52,10 +59,13 @@ def _validate_one(symbol: str, candles: List[OHLCV],
     n = len(candles)
     exhaustion_returns: List[float] = []
     baseline_returns: List[float] = []
+    lookback = _DETECTOR_LOOKBACK_BARS
 
-    # Need enough lookback for the cascade detector (~30 bars warmup).
+    # Need enough lookback for the cascade detector (~22 bars warmup).
     for i in range(30, n - horizon_bars):
-        window = candles[: i + 1]
+        # O(1) window slice instead of O(n) cumulative — see comment on
+        # _DETECTOR_LOOKBACK_BARS for why 60 is enough.
+        window = candles[max(0, i + 1 - lookback): i + 1]
         reading = detect_cascade(window)
         fwd = _forward_return_bps(candles, i, horizon_bars)
         if fwd is None:
