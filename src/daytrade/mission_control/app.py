@@ -121,11 +121,33 @@ def list_processes() -> List[Dict[str, Any]]:
 
 
 def find_bot_processes(bot: Bot, snapshot: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Return the bot's *real* processes — i.e. its Python interpreter.
+
+    Each bot is wrapped in ``caffeinate -s python -m <bot> ...``. Both the
+    caffeinate parent and the python child match ``process_match`` substrings
+    like ``nighttrade observe``. If we counted both, "procs=2" is misleading,
+    and worse: when the python child crashes but caffeinate lingers a moment
+    before being reaped, mission control sees procs=1 and reports the bot as
+    healthy when it is in fact down. We discriminate on the *executable*
+    (first token of the command line) — caffeinate's path always starts with
+    ``caffeinate`` somewhere in its basename, and the python interpreter's
+    path always ends in ``python``/``Python``/``python3`` etc.
+    """
     matched: List[Dict[str, Any]] = []
     for p in snapshot:
         cmd = p["command"]
-        if any(needle in cmd for needle in bot.process_match):
-            matched.append(p)
+        if not any(needle in cmd for needle in bot.process_match):
+            continue
+        # First token = executable path. ps reports the absolute path.
+        exe = cmd.split(None, 1)[0] if cmd else ""
+        exe_base = exe.rsplit("/", 1)[-1].lower()
+        if "caffeinate" in exe_base:
+            continue
+        if "python" not in exe_base:
+            # Some other unrelated process happened to mention the bot name
+            # in its args (e.g. a grep, a text editor).
+            continue
+        matched.append(p)
     return matched
 
 
