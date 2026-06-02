@@ -85,6 +85,83 @@
 - 0/6 symbols clear net cost with **cascade ∩ gated**.
 - 0/6 symbols show **cascade-and-gated > meta-gated** (positive interaction) on ≥5 events.
 
-If cascade-and-gated dominates more often than not — *and* the per-symbol event counts are non-trivial — the recommendation is to either (a) raise ``meta_label_edge_multiple`` selectively when ``cascade_exhaustion=1`` (a bonus gate), or (b) admit cascade-exhaustion bars even when the meta gate would normally block, *only* in symbols where the lift is consistent.
+## What the numbers actually say
 
-If cascade-and-gated does NOT consistently dominate, the meta-model is likely already extracting whatever signal cascade exposure provides — no additional gate logic warranted.
+The honest read is more interesting than the canned verdict above.
+
+**1. cascade_exhaustion has a real direction signal.** 5/6 symbols
+have a clearly positive gross mean return on exhaustion bars (BTC
++22.9, SOL +12.8, BNB +12.3, LINK +15.2, AVAX +18.5 bps). ETH is the
+outlier (-12.6 bps on n=18). Direction is consistent with the SOL
+research that flagged the edge in the first place.
+
+**2. The meta-gate is anti-selecting cascade bars.** ``meta_gated``
+fires on 397–1156 bars per symbol (4–9% of bars), but the
+intersection with ``cascade_exhaustion`` is **0–2 events per symbol**.
+The meta-model is almost never gating cascade-exhaustion bars
+through — even though they're in the feature set. So
+"combine cascade with meta-gate" by **intersection** fails by
+construction: the sets don't overlap.
+
+**3. The meta-gate on its own underperforms in this window.**
+Every ``meta_gated`` slice has a more negative mean return than
+``all`` (BNB barely positive on ``all`` was the lone exception).
+The per-symbol 30-day GradientBoosting is overfitting; on the
+held-out 9 days it's effectively anti-selecting. The live bot pools
+across all symbols, which would generalise better — this per-symbol
+training is a strict ablation, not the production setup.
+
+**4. None of the slices clear 24 bp net.** Even BTC's
+cascade-exhaustion slice (gross +22.9, the best of the set) is
+−1.1 bp net of cost. The edge is real in *direction* but too thin
+in *magnitude* to overcome retail-tier fees + slippage.
+
+## Recommendations
+
+**Don't ship an intersection gate.** With n=0–2 overlap, there's
+nothing to gate on.
+
+**Test a UNION ("cascade override") gate next.** Hypothesis: admit
+cascade-exhaustion bars even when ``meta_proba`` is below the floor,
+on the symbols where the gross edge clears the median bar (BTC, SOL,
+BNB, LINK, AVAX). With 9–18 events per symbol per 9-day window, this
+is a sample-size-limited test — needs a longer evaluation horizon
+(90–180 days) to bind the variance. Until then, the existing
+``use_liquidation_cascade_gate`` flag (currently False; see
+``config/schema.py:553``) is a closer place to wire an override than
+the meta-gate.
+
+**Don't tighten ``meta_label_edge_multiple``.** The gate is already
+selecting against the cascade signal; raising the floor would
+amplify the wrong selection.
+
+**Cost is the binding constraint.** Magnitudes here are ~10–20 bps;
+costs are 24 bp. Two paths to flip net-positive:
+- Maker rebates / VIP-tier fee structure (drops ~10 bp round-trip).
+- Longer hold horizon (the original SOL research showed +18.9 bp at
+  30m vs +7.1 bp at 15m — letting the rebound mature helps).
+
+## Caveats
+
+- 9-day held-out windows are short. Single-regime sampling (no major
+  volatility shift in the test slice) means these numbers are
+  *suggestive*, not *proven*.
+- Per-symbol meta-model training (not the production pooled training)
+  is a stricter test that disadvantages the meta-model. Pooled
+  training would likely improve the ``meta_gated`` numbers but
+  doesn't fix the anti-correlation with the cascade detector.
+- ``ETHUSDT`` is the consistent outlier — cascade-exhaustion bars on
+  ETH are net negative even at the gross level. Worth a separate
+  per-symbol calibration look.
+
+## Reproduce
+
+```bash
+PYTHONPATH=src python3 scripts/sweep_cascade_meta_interaction.py \
+  --symbols "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,LINKUSDT,AVAXUSDT" \
+  --days 30 --gate-multiple 2.0 --cost-bps 24.0 \
+  --out docs/CASCADE-META-INTERACTION-FINDINGS.md
+```
+
+Analysis function + 10 unit tests: ``daytrade.research.cascade_meta_interaction``,
+``tests/test_cascade_meta_interaction.py``.
