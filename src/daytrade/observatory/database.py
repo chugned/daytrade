@@ -479,8 +479,33 @@ class ObservatoryDB:
         self._commit_or_defer()
 
     def current_learning_session(self) -> Optional[Dict[str, Any]]:
+        # Exclude 'superseded' rows — those are spurious duplicate windows
+        # folded into the original on resume (see resumable_learning_session).
         return self._one("SELECT * FROM learning_sessions "
+                         "WHERE status != 'superseded' "
                          "ORDER BY id DESC LIMIT 1")
+
+    def resumable_learning_session(self) -> Optional[Dict[str, Any]]:
+        """The session to resume on restart: the EARLIEST-started window that
+        has not been explicitly completed or superseded.
+
+        A clean shutdown marks a session 'stopped' (not 'completed'), so an
+        in-progress window must resume by AGE, not by status — otherwise every
+        restart abandons the running 30-day clock for a fresh 'Day 1/30'.
+        """
+        return self._one("SELECT * FROM learning_sessions "
+                         "WHERE status NOT IN ('completed', 'superseded') "
+                         "ORDER BY start_ts ASC LIMIT 1")
+
+    def supersede_learning_sessions(self, keep_id: int) -> None:
+        """Mark every non-completed session OTHER than ``keep_id`` as
+        'superseded' — collapses spurious duplicate windows so the dashboard
+        and resume both see a single canonical learning session."""
+        self._conn.execute(
+            "UPDATE learning_sessions SET status='superseded', last_update_ts=? "
+            "WHERE id != ? AND status NOT IN ('completed', 'superseded')",
+            (_now(), keep_id))
+        self._commit_or_defer()
 
     # -- daily metrics / regimes / readiness ---------------------------------
 

@@ -153,18 +153,30 @@ class LearningSession:
         Resuming preserves the original start date so the 30-day clock keeps
         running across restarts rather than resetting.
         """
-        existing = db.current_learning_session()
-        if existing and existing.get("status") == "active":
-            return cls(
+        now = datetime.now(timezone.utc)
+        # Resume the OLDEST in-progress window (by start date), regardless of
+        # whether it was last marked 'active' or 'stopped'. A clean shutdown
+        # marks the session 'stopped', so resuming only on 'active' abandoned
+        # the running 30-day clock on every restart and reset the day counter
+        # to 1 (the 2026-06-03 'Day 1/30' bug). The trade history + models were
+        # never affected — only this counter.
+        existing = db.resumable_learning_session()
+        if existing:
+            candidate = cls(
                 start=_parse(existing["start_ts"]),
                 target_days=existing["target_days"],
                 interval_seconds=existing["interval_seconds"],
                 session_id=existing["id"],
                 cycles_completed=existing.get("cycles_completed", 0),
             )
+            if not candidate.is_complete(now):
+                # Fold any spurious newer duplicate windows into this one so
+                # the dashboard shows a single, honest day counter.
+                db.supersede_learning_sessions(keep_id=candidate.session_id)
+                return candidate
         session_id = db.start_learning_session(target_days, interval_seconds)
         return cls(
-            start=datetime.now(timezone.utc),
+            start=now,
             target_days=target_days,
             interval_seconds=interval_seconds,
             session_id=session_id,
