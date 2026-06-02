@@ -78,3 +78,13 @@
 {"ts": "2026-06-02T01:50:57.460023+00:00", "agent": "claude-main", "kind": "shell", "summary": "Manually pruned 2.14M nighttrade rows + 232k daytrade rows from oversized symbol_health/activity tables"}
 {"ts": "2026-06-02T01:50:57.460394+00:00", "agent": "claude-main", "kind": "edit", "summary": "Mirrored REAL-MONEY-RISKS.md to nighttrade adapted for stocks"}
 {"ts": "2026-06-02T01:50:57.460497+00:00", "agent": "claude-main", "kind": "complete", "summary": "PARITY-4B/4C/5A/7A/8 all closed \u2014 32/32 roadmap items done"}
+{"ts": "2026-06-02T02:10:43.651632+00:00", "agent": "claude-main", "kind": "roadmap", "summary": "Senior-engineer roadmap published \u2014 12 items"}
+{"ts": "2026-06-02T02:10:43.651990+00:00", "agent": "claude-main", "kind": "status", "summary": "P1-1: running make test on daytrade"}
+{"ts": "2026-06-02T02:12:31.449150+00:00", "agent": "claude-main", "kind": "shell", "summary": "P1-1 daytrade: 551 passed, 1 warning (sklearn UndefinedMetricWarning on test_research)"}
+{"ts": "2026-06-02T02:12:31.450207+00:00", "agent": "claude-main", "kind": "status", "summary": "P1-2: running make test on nighttrade"}
+{"ts": "2026-06-02T02:14:39.795507+00:00", "agent": "claude-main", "kind": "shell", "summary": "P1-2 nighttrade pytest running in background (bekxwyl4l)"}
+{"ts": "2026-06-02T02:14:39.796764+00:00", "agent": "claude-main", "kind": "status", "summary": "P1-3: drafting CLAUDE.md for daytrade"}
+{"ts": "2026-06-02T02:15:30.132891+00:00", "agent": "claude-main", "kind": "edit", "summary": "P1-3 done: CLAUDE.md drafted for daytrade"}
+{"ts": "2026-06-02T02:15:30.134175+00:00", "agent": "claude-main", "kind": "status", "summary": "P1-4: drafting CLAUDE.md for nighttrade"}
+{"ts": "2026-06-02T02:16:11.205707+00:00", "agent": "claude-main", "kind": "edit", "summary": "P1-4 done: CLAUDE.md drafted for nighttrade"}
+{"ts": "2026-06-02T02:16:11.207368+00:00", "agent": "claude-main", "kind": "status", "summary": "P1-5: ADR-0001 alert routing fix"}
