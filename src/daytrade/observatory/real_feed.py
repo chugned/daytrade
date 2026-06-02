@@ -17,6 +17,7 @@ permanently; recent candles are cached briefly.
 
 from __future__ import annotations
 
+import threading
 import time
 from collections import OrderedDict
 from datetime import datetime, timezone
@@ -74,7 +75,15 @@ class RealMarketFeed:
         # session + connection pool across the ~100 calls per cycle.
         # Previously a fresh Client per `_get` meant a fresh TLS
         # handshake per call (~50-150ms each), dominating cycle time.
+        # httpx.Client is documented thread-safe — safe to call from
+        # the prefetch worker pool the observer can spin up per cycle.
         self._client = httpx.Client(timeout=self._timeout)
+        # SPEED: protect the shared dict caches when the observer
+        # prefetches symbols in parallel. Each symbol's _recent slot
+        # is owned by one thread, but _minute_close gets writes from
+        # multiple threads + has eviction (popitem) that's not atomic
+        # under concurrent mutation.
+        self._cache_lock = threading.RLock()
 
     def close(self) -> None:
         """Release the underlying HTTP pool. Idempotent."""
@@ -87,13 +96,16 @@ class RealMarketFeed:
         self.close()
 
     def _cache_minute_close(self, key: Tuple[str, int], price: float) -> None:
-        """Insert with FIFO eviction when over the cap. O(1)."""
-        cache = self._minute_close
-        if key in cache:
-            cache.move_to_end(key)  # mark as recent
-        cache[key] = price
-        while len(cache) > self._MINUTE_CLOSE_CACHE_MAX:
-            cache.popitem(last=False)  # evict oldest
+        """Insert with FIFO eviction when over the cap. O(1).
+        Thread-safe via _cache_lock — callable from the observer's
+        parallel prefetch pool."""
+        with self._cache_lock:
+            cache = self._minute_close
+            if key in cache:
+                cache.move_to_end(key)  # mark as recent
+            cache[key] = price
+            while len(cache) > self._MINUTE_CLOSE_CACHE_MAX:
+                cache.popitem(last=False)  # evict oldest
 
     # -- HTTP ----------------------------------------------------------------
 
