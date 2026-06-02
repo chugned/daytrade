@@ -4,7 +4,8 @@
 PY ?= python3
 
 .PHONY: help install learn research observe dashboard report status watchlist test demo backtest clean \
-        research-cascade research-cascade-fresh research-cascade-all
+        research-cascade research-cascade-fresh research-cascade-all \
+        research-cost-horizon research-p5-4-validate
 
 help:
 	@echo "daytrade — make targets"
@@ -24,6 +25,10 @@ help:
 	@echo "  make research-cascade        per_symbol 30d + pooled 30d, parallel + cached"
 	@echo "  make research-cascade-all    + 90d per_symbol + 90d pooled (heavier)"
 	@echo "  make research-cascade-fresh  same but --no-cache (rebuild parquet frames)"
+	@echo ""
+	@echo "  cost × horizon × gate sensitivity (P5-3, P5-4):"
+	@echo "  make research-cost-horizon   full 1800-cell sweep, ~8min on 6 cores"
+	@echo "  make research-p5-4-validate  pooled 90d validation of P5-3 winners"
 
 install:
 	$(PY) -m pip install -e ".[dev]"
@@ -89,3 +94,22 @@ research-cascade-fresh:
 	    --out docs/CASCADE-META-30D-PER-SYMBOL.md
 	$(_CASCADE_SCRIPT) --days 30 --training pooled --no-cache \
 	    --out docs/CASCADE-META-30D-POOLED.md
+
+# ----- cost × horizon × gate sensitivity (P5-3, P5-4) ------------------------
+
+research-cost-horizon:
+	PYTHONPATH=src $(PY) scripts/sweep_cost_horizon.py \
+	    --symbols "$(_CASCADE_SYMBOLS)" \
+	    --horizons "15,30,60,120,240" \
+	    --gate-multiples "2.0,3.0,4.0,5.0" \
+	    --cost-tiers "6,14,24" \
+	    --days 30 --jobs -1 \
+	    --out docs/COST-HORIZON-SWEEP-FINDINGS.md
+
+research-p5-4-validate:
+	PYTHONPATH=src $(PY) scripts/sweep_p5_4_validate.py \
+	    --symbols "$(_CASCADE_SYMBOLS)" \
+	    --horizons "120,240" \
+	    --gate-multiples "3.0,4.0,5.0" \
+	    --days 90 --cost-bps 24.0 \
+	    --out docs/P5-4-POOLED-VALIDATION-FINDINGS.md
