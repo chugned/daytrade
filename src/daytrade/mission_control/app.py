@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from . import activity as _activity
+from . import ram_history as _ram
 
 
 # ---- Bot registry --------------------------------------------------------
@@ -75,11 +76,11 @@ def list_processes() -> List[Dict[str, Any]]:
     """Snapshot of running Python processes that look like bots.
 
     Uses macOS ``ps``; no external Python deps. Returns dicts shaped as
-    {pid, ppid, pmem, pcpu, etime, command}.
+    {pid, ppid, pmem_pct, pcpu_pct, rss_mb, etime, command}.
     """
     try:
         out = subprocess.run(
-            ["ps", "-A", "-o", "pid=,ppid=,%mem=,%cpu=,etime=,command="],
+            ["ps", "-A", "-o", "pid=,ppid=,%mem=,%cpu=,rss=,etime=,command="],
             capture_output=True, text=True, timeout=5, check=False,
         ).stdout
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -89,15 +90,16 @@ def list_processes() -> List[Dict[str, Any]]:
         line = line.strip()
         if not line:
             continue
-        parts = line.split(None, 5)
-        if len(parts) < 6:
+        parts = line.split(None, 6)
+        if len(parts) < 7:
             continue
-        pid, ppid, pmem, pcpu, etime, command = parts
+        pid, ppid, pmem, pcpu, rss_kb, etime, command = parts
         if "python" not in command.lower():
             continue
         rows.append({
             "pid": int(pid), "ppid": int(ppid),
             "pmem_pct": float(pmem), "pcpu_pct": float(pcpu),
+            "rss_mb": round(float(rss_kb) / 1024.0, 1),
             "etime": etime, "command": command,
         })
     return rows
@@ -246,7 +248,14 @@ function renderBots(data) {
     kvHtml += kv('processes', `${aliveCount} alive`);
     if (bot.processes[0]) {
       kvHtml += kv('pid · uptime', `${bot.processes[0].pid} · ${bot.processes[0].etime}`);
-      kvHtml += kv('cpu · mem', `${bot.processes[0].pcpu_pct.toFixed(1)}% · ${bot.processes[0].pmem_pct.toFixed(1)}%`);
+      kvHtml += kv('cpu', `${bot.processes[0].pcpu_pct.toFixed(1)}%`);
+      // RAM with total across all of this bot's procs and a colour cue
+      const rssMb = bot.total_rss_mb || 0;
+      let ramColour = '#6dd58c';
+      if (rssMb > 1024) ramColour = '#ff6b6b';
+      else if (rssMb > 500) ramColour = '#f7c163';
+      const ramFormatted = rssMb >= 1024 ? (rssMb/1024).toFixed(2)+' GB' : rssMb.toFixed(0)+' MB';
+      kvHtml += kv('RAM (RSS)', `<span style="color:${ramColour}">${ramFormatted}</span>`);
     }
     if (bot.db && bot.db.available && !bot.db.db_error) {
       kvHtml += kv('closed trades', bot.db.closed_trades);
@@ -262,10 +271,36 @@ function renderBots(data) {
     const logHtml = bot.log_tail.length
           ? `<pre>${bot.log_tail.slice(-12).map(l => escapeHtml(l)).join('\\n')}</pre>`
           : `<pre style="opacity:.5">(no log lines)</pre>`;
+    // RAM sparkline — last hour
+    const ramHist = bot.ram_history || [];
+    let sparkSvg = '';
+    if (ramHist.length > 1) {
+      const W = 280, H = 50;
+      const vals = ramHist.map(r => r.rss_mb || 0);
+      const lo = Math.min(...vals), hi = Math.max(...vals);
+      const range = Math.max(1, hi - lo);
+      const pts = ramHist.map((r, i) => {
+        const x = (i / (ramHist.length - 1)) * W;
+        const y = H - ((r.rss_mb - lo) / range) * (H - 4) - 2;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      const trend = vals[vals.length - 1] - vals[0];
+      const trendColour = trend > 50 ? '#ff6b6b' : trend > 5 ? '#f7c163' : '#6dd58c';
+      sparkSvg = `<div style="margin-top:8px;">
+        <div style="font-size:.7rem;color:#98a0ab;display:flex;justify-content:space-between;">
+          <span>RAM 60min · ${ramHist.length} samples</span>
+          <span style="color:${trendColour}">${trend>=0?'+':''}${trend.toFixed(1)} MB</span>
+        </div>
+        <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="background:#0a0d12;border-radius:4px;">
+          <polyline points="${pts}" fill="none" stroke="${trendColour}" stroke-width="1.5"/>
+        </svg>
+      </div>`;
+    }
     grid.innerHTML += `<section class="card">
       <h2>${escapeHtml(bot.name)} <span class="pill ${pillClass}">${pillText}</span></h2>
       <div class="kv">${kvHtml}</div>
       <div class="links">${links}</div>
+      ${sparkSvg}
       ${logHtml}
     </section>`;
   }
@@ -402,6 +437,8 @@ def create_app(bots: Optional[List[Bot]] = None) -> FastAPI:
     def state() -> JSONResponse:
         snapshot = list_processes()
         out_bots: List[Dict[str, Any]] = []
+        # RAM history: pull last 60 minutes for the configured bots
+        ram_series = _ram.by_bot([b.name for b in bots], window_minutes=60)
         for b in bots:
             procs = find_bot_processes(b, snapshot)
             db = db_summary(b.db_path)
@@ -418,9 +455,19 @@ def create_app(bots: Optional[List[Bot]] = None) -> FastAPI:
                 "log_tail": tail_file(b.log_path, lines=30),
                 "db": db,
                 "heartbeat_age_seconds": hb_age,
+                "ram_history": ram_series.get(b.name, []),
+                "total_rss_mb": round(sum((p.get("rss_mb") or 0)
+                                          for p in procs), 1),
             })
+        # Append current RAM samples so the next request has fresh history
+        now_iso = datetime.now(timezone.utc).isoformat()
+        _ram.append([
+            {"ts": now_iso, "bot": b["name"], "pid": p["pid"],
+             "rss_mb": p.get("rss_mb"), "pcpu_pct": p.get("pcpu_pct")}
+            for b in out_bots for p in b["processes"]
+        ])
         return JSONResponse({
-            "now": datetime.now(timezone.utc).isoformat(),
+            "now": now_iso,
             "host": os.uname().nodename,
             "bots": out_bots,
             "all_python_processes": snapshot,

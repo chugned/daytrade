@@ -1,82 +1,143 @@
 {
-  "session_goal": "QA hunt + fix all crash vulnerabilities found by the audit agent",
-  "current_phase": "QA-HIGH-1 + HIGH-3: atomic outcome eval + DB pruning/checkpoint",
+  "session_goal": "QA hunt on daytrade + take over nighttrade with same quality bar",
+  "current_phase": "NT-RESTART: killing zombie + clean start",
   "items": [
     {
       "id": "VIS-1",
       "title": "Build activity feed + roadmap files",
       "status": "complete",
-      "summary": "Append-only JSONL log of what Claude/agents are doing; mission control reads it"
+      "summary": "JSONL log; mission control reads it"
     },
     {
       "id": "VIS-2",
       "title": "Wire activity feed into mission control UI",
       "status": "complete",
-      "summary": "Add /api/activity endpoint + timeline panel to the page"
+      "summary": "/api/activity + /api/roadmap + per-agent timeline cards"
+    },
+    {
+      "id": "MC-RAM",
+      "title": "RAM history tracking + sparkline graph in mission control",
+      "status": "complete",
+      "summary": "ps captures rss_mb; 60-min sparkline per bot"
     },
     {
       "id": "QA-CRIT-1",
-      "title": "Fix price-fetch crash in _equity/_manage_positions",
+      "title": "Price-fetch crash in _equity/_manage_positions",
       "status": "complete",
       "severity": "CRITICAL",
-      "summary": "Wrap feed.price_at calls in try/except so a Binance hiccup doesn't crash the cycle when positions are open"
+      "summary": "Wrap feed.price_at in try/except \u2014 Binance hiccup no longer kills cycle"
     },
     {
       "id": "QA-CRIT-2",
       "title": "Bound RealMarketFeed._minute_close",
       "status": "complete",
       "severity": "CRITICAL",
-      "summary": "Same pattern as nighttrade's 4.66 GB leak \u2014 cap with LRU"
+      "summary": "FIFO LRU at 50k entries (~5MB) \u2014 was unbounded growth"
     },
     {
       "id": "QA-CRIT-3",
-      "title": "Rotating log handler for daytrade.log + db-writes.log",
+      "title": "Rotating log handlers for daytrade.log + db-writes.log",
       "status": "complete",
       "severity": "CRITICAL",
-      "summary": "Current 373 MB + 184 MB after 11 days; will hit disk full eventually"
+      "summary": "RotatingFileHandler (50MB\u00d75) + manual rotation in db._writelog"
     },
     {
       "id": "QA-CRIT-4",
       "title": "Act on consecutive_failures counter",
       "status": "complete",
       "severity": "CRITICAL",
-      "summary": "Currently incremented but ignored; bot in permafail loop hammers Binance"
+      "summary": "Exponential backoff >3 failures; abort run at 50"
     },
     {
       "id": "QA-HIGH-1",
       "title": "Atomic outcome eval transactions",
       "status": "complete",
-      "severity": "HIGH"
+      "severity": "HIGH",
+      "summary": "upsert_outcome_and_mark_evaluated as single transaction"
     },
     {
       "id": "QA-HIGH-2",
       "title": "Seed _peak_equity from history on restart",
       "status": "complete",
-      "severity": "HIGH"
+      "severity": "HIGH",
+      "summary": "db.historical_peak_equity() \u2014 drawdown survives restart honestly"
     },
     {
       "id": "QA-HIGH-3",
       "title": "DB pruning + WAL checkpoint task",
       "status": "complete",
-      "severity": "HIGH"
+      "severity": "HIGH",
+      "summary": "db.prune_old(days=30) called from day_rollover + PRAGMA wal_checkpoint"
     },
     {
       "id": "QA-HIGH-4",
       "title": "Atomic now.json write (tempfile + rename)",
       "status": "complete",
-      "severity": "HIGH"
+      "severity": "HIGH",
+      "summary": "tempfile + os.replace \u2014 dashboard no longer sees truncated JSON"
     },
     {
       "id": "QA-HIGH-5",
       "title": "Reuse httpx.Client in RealMarketFeed",
       "status": "complete",
-      "severity": "HIGH"
+      "severity": "HIGH",
+      "summary": "Single long-lived client \u2014 TLS handshake reuse across ~100 calls/cycle"
     },
     {
       "id": "QA-HIGH-6",
-      "title": "Fix realised-PnL capped at 500 trades",
+      "title": "Realised PnL capped at 500 trades",
       "status": "complete",
-      "severity": "HIGH"
+      "severity": "HIGH",
+      "summary": "db.total_realised_pnl() \u2014 full SUM, not 500-row window"
+    },
+    {
+      "id": "QA-RUNS-1",
+      "title": "mark_dangling_runs_crashed PID-liveness check",
+      "status": "complete",
+      "severity": "HIGH",
+      "summary": "Only marks crashed when PID is actually dead \u2014 fixes sibling-bot bug"
+    },
+    {
+      "id": "QA-RUNS-2",
+      "title": "heartbeat() self-heals spuriously-crashed rows",
+      "status": "complete",
+      "severity": "HIGH",
+      "summary": "Restores status='running' and clears stopped_ts on heartbeat"
+    },
+    {
+      "id": "QA-RUNS-3",
+      "title": "current_bot_run prefers live-PID running rows",
+      "status": "complete",
+      "severity": "HIGH",
+      "summary": "Dashboard no longer fooled by short-lived sibling test runs"
+    },
+    {
+      "id": "NT-SURVEY",
+      "title": "Survey nighttrade structure + find memory leak",
+      "status": "complete",
+      "severity": "CRITICAL",
+      "summary": "PID 25684 is ZOMBIE: last log 15d ago, ran 4 cycles, SIGINT'd, still alive @3.2GB. yfinance/pandas leak."
+    },
+    {
+      "id": "NT-LEAK",
+      "title": "Fix nighttrade memory leak (3.2 GB after 12d)",
+      "status": "complete",
+      "severity": "CRITICAL",
+      "summary": "Plan: port log rotation + add gc.collect() after yfinance refresh + apply all daytrade QA gates"
+    },
+    {
+      "id": "NT-RESTART",
+      "title": "Kill zombie + restart nighttrade clean",
+      "status": "in_progress",
+      "severity": "CRITICAL",
+      "summary": "Will verify RAM stays <500MB and heartbeat updates"
+    },
+    {
+      "id": "NT-QA",
+      "title": "Port full daytrade QA gates to nighttrade",
+      "status": "queued",
+      "severity": "HIGH",
+      "summary": "Log rotation, consecutive_failures backoff, atomic now.json, peak_equity seed, prune_old, etc."
     }
   ]
 }

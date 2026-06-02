@@ -35,3 +35,15 @@
 {"ts": "2026-06-02T00:46:32.778064+00:00", "agent": "claude-main", "kind": "edit", "summary": "observer: uses atomic upsert; day_rollover now prunes old activity + checkpoints WAL"}
 {"ts": "2026-06-02T00:46:32.778245+00:00", "agent": "claude-main", "kind": "edit", "summary": "tests/test_qa_high_misc.py \u2014 7 regression tests"}
 {"ts": "2026-06-02T00:46:32.779903+00:00", "agent": "claude-main", "kind": "complete", "summary": "QA-HIGH-1+3: atomic outcomes + DB pruning + WAL checkpoint"}
+{"ts": "2026-06-02T00:47:17.633590+00:00", "agent": "claude-main", "kind": "complete", "summary": "Session batch shipped: 4 CRITICAL + 6 HIGH fixes pushed to main, 551 tests green", "detail": "Running bot still on old code; restart at convenience to pick up fixes (state persists in DB)"}
+{"ts": "2026-06-02T00:47:48.014584+00:00", "agent": "claude-main", "kind": "status", "summary": "New mandate: take over nighttrade, apply daytrade-quality"}
+{"ts": "2026-06-02T00:47:48.015240+00:00", "agent": "claude-main", "kind": "status", "summary": "Plan: 1) RAM tracking in mission control 2) survey nighttrade 3) fix memory leak 4) port the QA gates"}
+{"ts": "2026-06-02T00:49:14.679228+00:00", "agent": "claude-main", "kind": "edit", "summary": "mission control: ps now captures rss_mb; new /api/state.ram_history per bot"}
+{"ts": "2026-06-02T00:49:14.679879+00:00", "agent": "claude-main", "kind": "edit", "summary": "mission control UI: RAM display + 60-minute sparkline per bot card"}
+{"ts": "2026-06-02T00:49:14.680837+00:00", "agent": "claude-main", "kind": "complete", "summary": "MC-RAM: RAM tracking live; refresh phone to see sparklines"}
+{"ts": "2026-06-02T00:51:02.690535+00:00", "agent": "claude-main", "kind": "finding", "summary": "Nighttrade PID 25684 is a ZOMBIE: last log 15d ago, ran 4 cycles, SIGINT received, but process still alive @3.2GB", "detail": "Plan: patch source with daytrade QA gates \u2192 kill zombie \u2192 restart clean"}
+{"ts": "2026-06-02T00:51:35.064889+00:00", "agent": "claude-main", "kind": "roadmap", "summary": "Roadmap fully refreshed: 10 daytrade items complete + 3 bot-runs fixes + nighttrade items added"}
+{"ts": "2026-06-02T00:52:18.358755+00:00", "agent": "claude-main", "kind": "edit", "summary": "nighttrade.runtime: RotatingFileHandler (50MB\u00d75) ported from daytrade"}
+{"ts": "2026-06-02T00:52:18.359362+00:00", "agent": "claude-main", "kind": "edit", "summary": "nighttrade.live_feed._refresh: explicit del old_cache + del data + gc.collect()", "detail": "Forces yfinance/pandas memory back to OS each refresh \u2014 primary leak fix"}
+{"ts": "2026-06-02T00:52:18.360594+00:00", "agent": "claude-main", "kind": "complete", "summary": "NT-LEAK fix shipped: gc.collect() after every yfinance refresh + cache deref"}
+{"ts": "2026-06-02T00:52:18.360769+00:00", "agent": "claude-main", "kind": "shell", "summary": "About to kill zombie PID 25684 + 25690 caffeinate, then restart fresh"}
