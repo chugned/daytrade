@@ -1,6 +1,6 @@
 {
-  "session_goal": "Senior engineer mandate: verify state, formalize, lint baseline, then SOL exhaustion validation",
-  "current_phase": "Phase 1: verify + formalize",
+  "session_goal": "Verify, formalize, lint baseline, cascade research (concluded \u2014 no validated edge), then speed/scale/reliability + learning-continuity",
+  "current_phase": "Phase 6: speed/scale/reliability + learning continuity",
   "items": [
     {
       "id": "P1-1",
@@ -158,11 +158,140 @@
     },
     {
       "id": "P5-6",
-      "title": "Walk-forward validation instead of single train/test split",
-      "status": "queued",
+      "title": "Walk-forward validation instead of single train/test split \u2014 CANCELLED (research closed with negative result)",
+      "status": "complete",
       "priority": "high",
       "rationale": "The P5-3 finding was regime-luck on a single 70/30 split. Walk-forward with sliding 30d-train / 7d-test windows would expose regime dependence directly.",
-      "added_at": "2026-06-02T08:08:15"
+      "added_at": "2026-06-02T08:08:15",
+      "severity": "LOW",
+      "completed_at": "2026-06-02T19:34:05",
+      "notes": "CANCELLED \u2014 research thread ended with confirmed negative result (P5-3 winners invalidated by simulator on 90d). Walk-forward would just re-confirm. Not worth the compute."
+    },
+    {
+      "id": "P6-1",
+      "title": "Cycle period semantic fix (both bots) \u2014 --interval is cycle period, not extra sleep",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "Daytrade 190s \u2192 60s/cycle; nighttrade 480s \u2192 200s/cycle. 3 tests pin the new contract. Bot was overshooting target by exactly the work time."
+    },
+    {
+      "id": "P6-2",
+      "title": "Parallel feed-warm (daytrade, 4 workers)",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "Daytrade: 36 sequential HTTP calls \u2192 4-worker parallel. 5 tests + actual-parallelism timing. ADR-0005 anti-pattern compliant."
+    },
+    {
+      "id": "P6-3",
+      "title": "Parallel chunked yfinance fetch (nighttrade, 8 workers)",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "Nighttrade fetch 110s \u2192 60s. 6 tests. We own the pool, not yfinance \u2014 keeps the OS thread count bounded."
+    },
+    {
+      "id": "P6-4",
+      "title": "DB retry proxy gaps closed (executemany / executescript / rollback)",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "Audit found 3 unwrapped methods on _RetryingConnection. ADR-0005 amended. 3 new tests."
+    },
+    {
+      "id": "P6-5",
+      "title": "db.batch() context manager (both bots)",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "Deferred commits \u2014 1500 commits/cycle on nighttrade \u2192 1. Symmetric on daytrade. 8 tests."
+    },
+    {
+      "id": "P6-6",
+      "title": "Dynamic symbol pruning (nighttrade)",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "Parks dead tickers after 3 fails, reprobes 10% each cycle. Persisted JSON. 7 tests."
+    },
+    {
+      "id": "P6-7",
+      "title": "Memory-hygiene rotation (nighttrade, 60-cycle restart)",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "Bounds yfinance internal memory growth. 3 tests. Verified live: rotation fired at cycle 60, fresh process spawned."
+    },
+    {
+      "id": "P6-8",
+      "title": "Daytrade meta-model save/load \u2014 fixes learning continuity",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "Bug: meta-model trained in-memory every 30 cycles but NEVER saved \u2192 every restart wiped learning. Now persists to artifacts/meta_model.pkl and loads on init. Bug observed today (model.pkl 16 days stale)."
+    },
+    {
+      "id": "P6-9",
+      "title": "Mission control: leak-warning false-positive fix",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "ramTrend() now filters to current PID + 10-min startup grace. Was crying wolf on every memory rotation."
+    },
+    {
+      "id": "P6-10",
+      "title": "Dashboard tailnet middleware + 0.0.0.0 bind",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "Replaces fragile 'bind to Tailscale IP' with always-bindable + per-request access control. Prevents 3am-incident pattern. ADR-equivalent."
+    },
+    {
+      "id": "P6-11",
+      "title": "Mission control CPU sparkline (host + per-bot)",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "Mirrors RAM integration. Distinguishes 'bot idle' from 'host saturated by other process'."
+    },
+    {
+      "id": "P6-12",
+      "title": "deploy/sync.sh: SIGKILL fallback + post-deploy health check",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "Validated runbook fix \u2014 graceful SIGTERM swallowed by in-flight cycles. SIGKILL after 60s + verify before declaring success."
+    },
+    {
+      "id": "P6-13",
+      "title": "deploy/watchdog.sh \u2014 cron-wired for 5-min health probe",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "Defence-in-depth against launchd-doesn't-respawn-after-clean-exit pattern. Just cron'd."
+    },
+    {
+      "id": "P6-14",
+      "title": "nighttrade --interval 300 \u2192 200 (after work fits in interval)",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "completed_at": "2026-06-02T19:34:05",
+      "added_at": "2026-06-02T19:34:05",
+      "notes": "60% more cycles/day vs pre-session, with comfortable margin over the measured 193s cycle work."
     }
   ]
 }

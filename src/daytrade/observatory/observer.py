@@ -52,6 +52,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _LOG_FILE = _REPO_ROOT / "logs" / "daytrade.log"
 _OBSERVER_REPORTS = _REPO_ROOT / "reports" / "observer"
 _NOW_PATH = _REPO_ROOT / "data" / "now.json"
+# LEARNING CONTINUITY: persist the meta-model so retrains accumulate
+# across restarts. Previously the model trained in-memory each
+# retrain cycle but was never saved → every restart lost the
+# learning. Bug observed 2026-06-02 (model.pkl was 16 days stale).
+_META_MODEL_PATH = _REPO_ROOT / "artifacts" / "meta_model.pkl"
 
 # The 10 steps of one observation cycle (for the dashboard "Now" panel).
 CYCLE_STEPS = [
@@ -151,7 +156,18 @@ class Observer:
         self._NotifyLevel = _NotifyLevel
         # Meta-labelling model (Phase 4): a precision filter on BUY signals,
         # retrained periodically on pooled triple-barrier outcomes.
+        # LEARNING CONTINUITY: load the meta-model from disk if a prior
+        # run trained one. Without this, every restart resets the
+        # meta-model to untrained → loses days of accumulated learning.
         self._meta = MetaLabelModel()
+        if _META_MODEL_PATH.exists():
+            try:
+                self._meta = MetaLabelModel.load(_META_MODEL_PATH)
+                _log.info("meta-model loaded from %s (n_samples=%d, base_win=%.3f)",
+                          _META_MODEL_PATH, self._meta.n_samples,
+                          self._meta.base_win_rate or 0.0)
+            except Exception as exc:  # noqa: BLE001 - a bad pickle must not block startup
+                _log.warning("meta-model load failed (%s) — starting fresh", exc)
         self._meta_retrain_every = 30
         self._meta_candles: Dict[str, list] = {}
 
@@ -563,6 +579,13 @@ class Observer:
                 "meta-model retrained",
                 f"{result.samples} samples · base win rate " f"{result.base_win_rate:.0%}",
             )
+            # LEARNING CONTINUITY: persist after each successful retrain
+            # so a restart (memory rotation, crash, deploy) doesn't
+            # discard the in-memory state.
+            try:
+                self._meta.save(_META_MODEL_PATH)
+            except Exception as exc:  # noqa: BLE001
+                _log.warning("meta-model save failed: %s", exc)
 
     #: Cap on per-cycle evaluations — keeps the cycle moving even when a big
     #: backlog (e.g. delisted-pair predictions that will never resolve) is
