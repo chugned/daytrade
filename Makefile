@@ -5,7 +5,7 @@ PY ?= python3
 
 .PHONY: help install learn research observe dashboard report status watchlist test demo backtest clean \
         research-cascade research-cascade-fresh research-cascade-all \
-        research-cost-horizon research-p5-4-validate
+        research-cost-horizon research-p5-4-validate simulate-winner
 
 help:
 	@echo "daytrade — make targets"
@@ -29,6 +29,8 @@ help:
 	@echo "  cost × horizon × gate sensitivity (P5-3, P5-4):"
 	@echo "  make research-cost-horizon   full 1800-cell sweep, ~8min on 6 cores"
 	@echo "  make research-p5-4-validate  pooled 90d validation of P5-3 winners"
+	@echo "  make simulate-winner         equity curve for the headline cell (PNG to artifacts/)"
+	@echo "                               override: SIM_SYM=SOLUSDT SIM_HZ=240 SIM_GATE=3.0"
 
 install:
 	$(PY) -m pip install -e ".[dev]"
@@ -113,3 +115,14 @@ research-p5-4-validate:
 	    --gate-multiples "3.0,4.0,5.0" \
 	    --days 90 --cost-bps 24.0 \
 	    --out docs/P5-4-POOLED-VALIDATION-FINDINGS.md
+
+# Equity-curve simulator for the headline P5-3 winner cell.
+# Override knobs: make simulate-winner SIM_SYM=SOLUSDT SIM_HZ=240 SIM_GATE=3.0
+SIM_SYM ?= BNBUSDT
+SIM_HZ  ?= 240
+SIM_GATE ?= 4.0
+SIM_DAYS ?= 90
+simulate-winner:
+	PYTHONPATH=src $(PY) scripts/simulate_winner.py \
+	    --symbol $(SIM_SYM) --horizon $(SIM_HZ) \
+	    --gate-multiple $(SIM_GATE) --days $(SIM_DAYS) --cost-bps 24.0
