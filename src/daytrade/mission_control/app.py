@@ -10,7 +10,9 @@ DBs. Safe to expose on Tailscale.
 
 from __future__ import annotations
 
+import json
 import os
+import shutil
 import sqlite3
 import subprocess
 from dataclasses import dataclass
@@ -78,6 +80,102 @@ def default_bots() -> List[Bot]:
 
 
 # ---- System probes (no extra deps) ---------------------------------------
+
+
+def _host_ram() -> Dict[str, Any]:
+    """macOS host RAM via ``sysctl`` (total) + ``vm_stat`` (used).
+
+    "Used" mirrors Activity Monitor's *Memory Used* = (active + wired +
+    compressed) pages × page size. Returns GB + used percentage. All
+    keys are ``None`` on any failure — never raises.
+    """
+    out: Dict[str, Any] = {
+        "ram_total_gb": None,
+        "ram_used_gb": None,
+        "ram_used_pct": None,
+    }
+    try:
+        total_bytes = int(
+            subprocess.run(
+                ["sysctl", "-n", "hw.memsize"],
+                capture_output=True, text=True, timeout=3, check=False,
+            ).stdout.strip()
+        )
+        vm = subprocess.run(
+            ["vm_stat"], capture_output=True, text=True, timeout=3, check=False,
+        ).stdout
+        page_size = 4096
+        first = vm.splitlines()[0] if vm else ""
+        if "page size of" in first:
+            page_size = int(first.split("page size of")[1].split("bytes")[0].strip())
+
+        def _pages(label: str) -> int:
+            for line in vm.splitlines():
+                if line.startswith(label):
+                    return int(line.split(":")[1].strip().rstrip("."))
+            return 0
+
+        used_pages = (
+            _pages("Pages active")
+            + _pages("Pages wired down")
+            + _pages("Pages occupied by compressor")
+        )
+        used_bytes = used_pages * page_size
+        out["ram_total_gb"] = round(total_bytes / 1e9, 1)
+        out["ram_used_gb"] = round(used_bytes / 1e9, 1)
+        out["ram_used_pct"] = round(100.0 * used_bytes / total_bytes, 1)
+    except (ValueError, IndexError, OSError, subprocess.TimeoutExpired):
+        pass
+    return out
+
+
+def sample_host_system() -> Dict[str, Any]:
+    """One snapshot of overall machine usage: RAM, disk, CPU load.
+
+    Answers "how much RAM / CPU / storage am I using right now?" at a
+    glance. Dependency-free (sysctl/vm_stat/shutil/os). Each probe is
+    independent and degrades to ``None`` on failure so a single bad
+    probe never breaks the others or the API.
+    """
+    sysm: Dict[str, Any] = {}
+    sysm.update(_host_ram())
+
+    # Disk — stdlib, on the root volume.
+    sysm.update({"disk_total_gb": None, "disk_free_gb": None, "disk_used_pct": None})
+    try:
+        total, used, free = shutil.disk_usage("/")
+        sysm["disk_total_gb"] = round(total / 1e9, 1)
+        sysm["disk_free_gb"] = round(free / 1e9, 1)
+        sysm["disk_used_pct"] = round(100.0 * used / total, 1)
+    except (OSError, ValueError):
+        pass
+
+    # CPU — reuse the same load-pct definition as the per-host CPU sparkline.
+    sysm["cpu_load_pct"] = None
+    try:
+        load_1min, _, _ = os.getloadavg()
+        cpu_count = os.cpu_count() or 1
+        sysm["cpu_load_pct"] = round(100.0 * load_1min / cpu_count, 1)
+    except (OSError, AttributeError):
+        pass
+
+    return sysm
+
+
+def read_bot_now(project_root: Path) -> Optional[Dict[str, Any]]:
+    """Read a bot's ``data/now.json`` ("what am I doing right now").
+
+    Returns the parsed dict (which includes the ``sleeping`` flag the
+    nighttrade observer writes when paused for closed markets, ADR-0007)
+    or ``None`` if absent / unreadable.
+    """
+    try:
+        path = Path(project_root) / "data" / "now.json"
+        if not path.exists():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 def list_processes() -> List[Dict[str, Any]]:
@@ -226,7 +324,7 @@ _INDEX_HTML = """<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mission control</title>
+<title>Project Polaris</title>
 <style>
   :root { color-scheme: light dark; }
   body { font-family: -apple-system, system-ui, sans-serif; margin: 0;
@@ -247,6 +345,7 @@ _INDEX_HTML = """<!doctype html>
   .pill.ok { background: #0a4a25; color: #6dd58c; }
   .pill.warn { background: #4d3a08; color: #f7c163; }
   .pill.bad { background: #5a1721; color: #ff6b6b; }
+  .pill.sleep { background: #1e2747; color: #8fb3ff; }
   .summary { font-size: 0.95rem; line-height: 1.4; margin: 8px 0 14px 0;
              color: #e5e9ef; }
   .stat-row { display: flex; gap: 16px; margin: 8px 0; flex-wrap: wrap; }
@@ -267,7 +366,14 @@ _INDEX_HTML = """<!doctype html>
 </style>
 </head>
 <body>
-<h1>Mission control <span class="meta" id="updated"></span></h1>
+<h1>★ Project Polaris <span class="meta" id="updated"></span></h1>
+
+<section class="card" id="host-system" style="margin-bottom:18px;">
+  <div style="font-size:.72rem;color:#98a0ab;letter-spacing:.04em;text-transform:uppercase;margin-bottom:10px;">
+    This computer — right now
+  </div>
+  <div id="host-system-body" style="display:flex;gap:14px;flex-wrap:wrap;"></div>
+</section>
 
 <section class="card" id="ram-overview" style="margin-bottom:18px;">
   <div style="font-size:.72rem;color:#98a0ab;letter-spacing:.04em;text-transform:uppercase;margin-bottom:8px;">
@@ -346,6 +452,19 @@ function statusFor(bot) {
   if (alive === 0) {
     return {pillClass:'bad', pillText:'STOPPED',
       summary:`This bot is NOT running. Last sign of life was ${humanAge(ageSec)}.`};
+  }
+  // Process exists and the bot says it is intentionally paused (market
+  // closed — ADR-0007). Takes priority over HEALTHY so the operator sees
+  // WHY there's no trading activity. Heartbeat is still fresh during sleep.
+  const now = bot.now || {};
+  if (now.sleeping === true) {
+    let until = '';
+    if (now.next_cycle_at) {
+      const dt = new Date(now.next_cycle_at);
+      if (!isNaN(dt)) until = ` Wakes ${dt.toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit'})}.`;
+    }
+    return {pillClass:'sleep', pillText:'PAUSED',
+      summary:`Intentionally paused — the market is closed, so it is sleeping to save power instead of grinding on stale data.${until} It will do one warm-up evaluation just before the open, then trade the session.`};
   }
   // Process exists + recent heartbeat
   if (ageSec !== null && ageSec < 600) {
@@ -615,6 +734,57 @@ function renderActivityTimeline(entries) {
   return html;
 }
 
+function renderHostSystem(data) {
+  // Whole-machine usage at a glance: RAM, disk, CPU load. Answers
+  // "how much of my computer am I using right now?" without opening
+  // Activity Monitor.
+  const hs = data.host_system || {};
+  const body = document.getElementById('host-system-body');
+  if (!body) return;
+
+  const tile = (label, big, sub, pct) => {
+    let colour = '#6dd58c';
+    if (pct != null) colour = pct >= 85 ? '#ff6b6b' : pct >= 65 ? '#f7c163' : '#6dd58c';
+    const bar = pct == null ? '' :
+      `<div style="height:5px;background:#0a0d12;border-radius:3px;margin-top:6px;overflow:hidden;">
+         <div style="height:100%;width:${Math.min(100, pct)}%;background:${colour};"></div>
+       </div>`;
+    return `<div class="stat" style="min-width:150px;">
+      <div class="label">${label}</div>
+      <div class="value" style="color:${colour};">${big}</div>
+      ${sub ? `<div style="font-size:.72rem;color:#98a0ab;margin-top:2px;">${sub}</div>` : ''}
+      ${bar}
+    </div>`;
+  };
+
+  const fmt = (v) => (v == null ? '—' : v);
+  let html = '';
+  // RAM
+  html += tile(
+    'Memory (RAM)',
+    hs.ram_used_pct == null ? '—' : hs.ram_used_pct.toFixed(0) + '%',
+    (hs.ram_used_gb != null && hs.ram_total_gb != null)
+      ? `${fmt(hs.ram_used_gb)} / ${fmt(hs.ram_total_gb)} GB used` : '',
+    hs.ram_used_pct,
+  );
+  // Disk
+  html += tile(
+    'Storage',
+    hs.disk_free_gb == null ? '—' : fmt(hs.disk_free_gb) + ' GB free',
+    (hs.disk_used_pct != null && hs.disk_total_gb != null)
+      ? `${hs.disk_used_pct.toFixed(0)}% of ${fmt(hs.disk_total_gb)} GB used` : '',
+    hs.disk_used_pct,
+  );
+  // CPU
+  html += tile(
+    'CPU load',
+    hs.cpu_load_pct == null ? '—' : hs.cpu_load_pct.toFixed(0) + '%',
+    'across all cores (1-min avg)',
+    hs.cpu_load_pct,
+  );
+  body.innerHTML = html;
+}
+
 function renderCpuOverview(data) {
   // Mirrors renderRamOverview but for CPU%. Adds a host-wide row
   // because per-bot CPU% drops to zero when the WHOLE machine is
@@ -800,6 +970,7 @@ async function refresh() {
     const rm = await rmR.json();
     document.getElementById('updated').textContent =
         '· ' + new Date(data.now).toLocaleTimeString();
+    renderHostSystem(data);
     renderRamOverview(data);
     renderCpuOverview(data);
     renderBots(data);
@@ -897,6 +1068,7 @@ def create_app(bots: Optional[List[Bot]] = None) -> FastAPI:
                     "log_tail": tail_file(b.log_path, lines=30),
                     "db": db,
                     "heartbeat_age_seconds": hb_age,
+                    "now": read_bot_now(b.project_root),
                     "ram_history": ram_series.get(b.name, []),
                     "cpu_history": cpu_series.get(b.name, []),
                     "total_rss_mb": round(sum((p.get("rss_mb") or 0) for p in procs), 1),
@@ -938,6 +1110,7 @@ def create_app(bots: Optional[List[Bot]] = None) -> FastAPI:
                 "host": os.uname().nodename,
                 "host_cpu": host_cpu_now,
                 "host_cpu_history": host_cpu_series + [host_cpu_now],
+                "host_system": sample_host_system(),
                 "bots": out_bots,
                 "all_python_processes": snapshot,
             }
