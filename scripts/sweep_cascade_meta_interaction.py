@@ -59,8 +59,13 @@ def _pull(symbol: str, days: int) -> List[OHLCV]:
     return download_history(symbol, interval="1m", days=days)
 
 
-def _frame_cache_path(symbol: str, days: int) -> Path:
-    return _FRAME_CACHE_DIR / f"{symbol}_{days}d.parquet"
+def _frame_cache_path(symbol: str, days: int, max_hold: int = 48) -> Path:
+    """Cache key includes the horizon — different ``max_hold_bars`` values
+    produce different triple-barrier labels AND different forward returns,
+    so they MUST live in separate cache files. The 48 default matches
+    AppConfig.risk.max_hold_bars at the time this file was originally
+    written."""
+    return _FRAME_CACHE_DIR / f"{symbol}_{days}d_h{max_hold}.parquet"
 
 
 def _train_test_split(frame: pd.DataFrame, train_frac: float = 0.7) -> tuple:
@@ -98,14 +103,14 @@ def _build_per_symbol_frame(candles: List[OHLCV], config: AppConfig) -> Optional
 def _load_or_build_frame(symbol: str, days: int, config: AppConfig,
                          use_cache: bool = True) -> Optional[pd.DataFrame]:
     """Cached wrapper around _build_per_symbol_frame. Saves to parquet
-    keyed by ``(symbol, days)``. Reading the cached file is ~20x
-    faster than rebuilding from scratch on 90d × 1m bars.
+    keyed by ``(symbol, days, max_hold_bars)``. Reading the cached
+    file is ~20x faster than rebuilding from scratch on 90d × 1m bars.
 
     The candle source (Binance public API + SQLite cache) is itself
     keyed by symbol+interval+days; we only cache the EXPENSIVE
     feature engineering + label step, not the candle pull.
     """
-    cache_path = _frame_cache_path(symbol, days)
+    cache_path = _frame_cache_path(symbol, days, max(1, config.risk.max_hold_bars))
     if use_cache and cache_path.exists():
         try:
             return pd.read_parquet(cache_path)
