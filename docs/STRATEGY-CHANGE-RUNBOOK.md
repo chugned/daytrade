@@ -151,20 +151,47 @@ DAYTRADE_PID=$(pgrep -f "daytrade learn" | head -1)
 echo "current daytrade pid: $DAYTRADE_PID"
 
 kill -TERM $DAYTRADE_PID
-for i in $(seq 1 30); do
+# Wait up to 60s for graceful exit. An in-flight cycle (network
+# fetch or sklearn retrain) can hold shutdown for that long; the
+# observed worst case on 2026-06-02 was >90s, so the SIGKILL
+# fallback below is REQUIRED, not optional.
+for i in $(seq 1 60); do
   kill -0 $DAYTRADE_PID 2>/dev/null || { echo "exited after ${i}s"; break; }
 done
+
+# SIGKILL fallback — observed 2026-06-02 that a long-running cycle
+# can swallow SIGTERM. Spawning the new process while the old one
+# is still alive creates a TWO-WRITER RACE on observatory.db
+# (instance_lock relies on the OLD process exiting to release its
+# lock; the new process may write to the DB before the old one dies).
+if kill -0 $DAYTRADE_PID 2>/dev/null; then
+  echo "WARN: graceful exit did not complete in 60s — SIGKILL fallback"
+  kill -KILL $DAYTRADE_PID
+  sleep 1
+  # The crashed-via-KILL row needs manual cleanup. The next observer's
+  # mark_dangling_runs_crashed will eventually catch it via PID liveness
+  # check, but doing it explicitly here avoids a window of stale state.
+  sqlite3 artifacts/observatory.db "UPDATE bot_runs SET status='crashed', \
+    stopped_ts=datetime('now') WHERE pid=$DAYTRADE_PID AND status='running'"
+fi
+# Verify the old process is actually dead BEFORE spawning the new one
+kill -0 $DAYTRADE_PID 2>/dev/null && { echo "FATAL: old still alive"; exit 1; }
 
 cd /Users/nedimvejo/Desktop/coding/daytrade
 nohup /usr/bin/env python3 -m daytrade learn --days 30 --interval 60 --real-data \
   > logs/daytrade.out.log 2> logs/daytrade.err.log < /dev/null &
 disown
-echo "spawned new daytrade pid=$!"
+NEW_PID=$!
+echo "spawned new daytrade pid=$NEW_PID"
 ```
 
-Wait for the first cycle to log: `tail -f logs/daytrade.log` — expect
-"cycle 1: ..." within ~60s and a meta-model retraining log line
-showing the new config in effect.
+Wait for cycle 1 by polling the DB (the log file might not be where you expect):
+```bash
+for i in $(seq 1 90); do
+  c=$(sqlite3 artifacts/observatory.db "SELECT cycles FROM bot_runs WHERE pid=$NEW_PID" 2>/dev/null)
+  if [ "${c:-0}" -ge "1" ]; then echo "cycle 1 done after ${i}s"; break; fi
+done
+```
 
 ---
 
