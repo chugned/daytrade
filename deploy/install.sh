@@ -99,8 +99,16 @@ make_plist() {
     echo '</dict></plist>'
   } > "$plist"
   launchctl bootout "gui/$U/$label" 2>/dev/null || true
-  sleep 1
-  launchctl bootstrap "gui/$U" "$plist"
+  # Give launchd time to fully tear down the old job before bootstrapping.
+  # A 1s settle raced on rapid re-deploys -> "Bootstrap failed: 5:
+  # Input/output error" (observed 2026-06-03). Retry once before falling
+  # back to the kickstart/watchdog safety net.
+  sleep 2
+  if ! launchctl bootstrap "gui/$U" "$plist" 2>/dev/null; then
+    sleep 3
+    launchctl bootstrap "gui/$U" "$plist" 2>/dev/null || \
+      echo "  WARN: bootstrap $label failed twice — kickstart will recover it"
+  fi
   echo "  loaded $label"
 }
 
