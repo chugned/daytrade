@@ -43,10 +43,19 @@ class Bot:
 
 
 def default_bots() -> List[Bot]:
-    """The two bots known to live on this host."""
+    """The two bots known to live on this host.
+
+    IMPORTANT: nighttrade has BOTH a dev directory (~/Desktop/coding/
+    nighttrade) where source is edited and a deployed directory
+    (~/nighttrade) where launchd actually runs it from. The launchd-
+    managed observer writes to the DEPLOYED DB / log, so mission
+    control reads from there to see truth. (Daytrade runs from its dev
+    directory — no split.)
+    """
     home = Path("/Users/nedimvejo")
     dt_root = home / "Desktop" / "coding" / "daytrade"
-    nt_root = home / "Desktop" / "coding" / "nighttrade"
+    nt_dev = home / "Desktop" / "coding" / "nighttrade"  # source of truth for code
+    nt_deployed = home / "nighttrade"                    # where launchd reads/writes
     return [
         Bot(
             name="daytrade",
@@ -59,12 +68,12 @@ def default_bots() -> List[Bot]:
         ),
         Bot(
             name="nighttrade",
-            project_root=nt_root,
+            project_root=nt_deployed,
             process_match=["nighttrade observe"],
-            log_path=nt_root / "logs" / "nighttrade.log",
-            db_path=nt_root / "artifacts" / "observatory.db",
+            log_path=nt_deployed / "logs" / "nighttrade.log",
+            db_path=nt_deployed / "artifacts" / "observatory.db",
             dashboard_url="http://100.127.143.106:8001",
-            notes="continuous market-safety observer",
+            notes="continuous market-safety observer (S&P 500)",
         ),
     ]
 
