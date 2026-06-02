@@ -22,6 +22,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from . import activity as _activity
+from . import cpu_history as _cpu
 from . import ram_history as _ram
 
 # ---- Bot registry --------------------------------------------------------
@@ -276,6 +277,14 @@ _INDEX_HTML = """<!doctype html>
   <div id="ram-overview-combined" style="margin-top:14px;"></div>
 </section>
 
+<section class="card" id="cpu-overview" style="margin-bottom:18px;">
+  <div style="font-size:.72rem;color:#98a0ab;letter-spacing:.04em;text-transform:uppercase;margin-bottom:8px;">
+    CPU usage right now
+  </div>
+  <div id="cpu-overview-body" style="display:flex;gap:12px;flex-wrap:wrap;"></div>
+  <div id="cpu-overview-combined" style="margin-top:14px;"></div>
+</section>
+
 <h2 class="section">Trading bots</h2>
 <div class="grid" id="grid"></div>
 
@@ -423,7 +432,8 @@ function renderBots(data) {
         const y = H - ((r.rss_mb - lo) / range) * (H - 4) - 2;
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       }).join(' ');
-      sparkSvg = `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}"
+      sparkSvg = `<div style="font-size:.7rem;color:#98a0ab;margin-top:8px;">Memory (last hour)</div>
+      <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}"
           preserveAspectRatio="none" style="background:#0a0d12;border-radius:4px;">
         <polyline points="${pts}" fill="none" stroke="${trend.colour}" stroke-width="1.5"/>
       </svg>
@@ -431,6 +441,35 @@ function renderBots(data) {
         <span>low: ${humanBytes(Math.min(...vals))}</span>
         <span>now: ${humanBytes(vals[vals.length-1])}</span>
         <span>high: ${humanBytes(Math.max(...vals))}</span>
+      </div>`;
+    }
+
+    // Per-bot CPU sparkline (same shape as RAM one, fixed 0–100 scale).
+    let cpuSparkSvg = '';
+    const cpuHist = bot.cpu_history || [];
+    if (cpuHist.length > 1) {
+      const W = 280, H = 36;
+      const vals = cpuHist.map(r => Math.min(r.pcpu_pct || 0, 100));
+      const pts = cpuHist.map((r, i) => {
+        const v = Math.min(r.pcpu_pct || 0, 100);
+        const x = (i / (cpuHist.length - 1)) * W;
+        const y = H - (v / 100) * (H - 4) - 2;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      const nowVal = vals[vals.length - 1];
+      const cpuColour = nowVal >= 80 ? '#ff6b6b'
+                      : nowVal >= 30 ? '#f7c163'
+                      : '#6dd58c';
+      cpuSparkSvg = `<div style="font-size:.7rem;color:#98a0ab;margin-top:10px;">CPU% (last hour, 0–100% scale)</div>
+      <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}"
+          preserveAspectRatio="none" style="background:#0a0d12;border-radius:4px;">
+        <line x1="0" y1="${H * 0.5}" x2="${W}" y2="${H * 0.5}" stroke="#2a2f38" stroke-width="0.5" stroke-dasharray="2,3"/>
+        <polyline points="${pts}" fill="none" stroke="${cpuColour}" stroke-width="1.5"/>
+      </svg>
+      <div style="font-size:.7rem;color:#6c727b;display:flex;justify-content:space-between;margin-top:2px;">
+        <span>low: ${Math.min(...vals).toFixed(1)}%</span>
+        <span>now: ${nowVal.toFixed(1)}%</span>
+        <span>high: ${Math.max(...vals).toFixed(1)}%</span>
       </div>`;
     }
 
@@ -462,6 +501,7 @@ function renderBots(data) {
       ${errorLine}
       ${trendSentence}
       ${sparkSvg}
+      ${cpuSparkSvg}
       ${links}
       ${logHtml}
     </section>`;
@@ -560,6 +600,103 @@ function renderActivityTimeline(entries) {
   return html;
 }
 
+function renderCpuOverview(data) {
+  // Mirrors renderRamOverview but for CPU%. Adds a host-wide row
+  // because per-bot CPU% drops to zero when the WHOLE machine is
+  // saturated by something outside the bots — the host row tells
+  // you which case it is.
+  const body = document.getElementById('cpu-overview-body');
+  const combined = document.getElementById('cpu-overview-combined');
+  if (!body || !combined) return;
+  body.innerHTML = '';
+
+  // Host cell first — most important "is the box healthy" signal
+  const hc = data.host_cpu || {};
+  const hostPct = hc.load_pct;
+  const hostColour = hostPct == null ? '#98a0ab'
+                   : hostPct >= 80 ? '#ff6b6b'
+                   : hostPct >= 50 ? '#f7c163'
+                   : '#6dd58c';
+  body.innerHTML += `<div style="flex:1;min-width:160px;background:#0a0d12;border-radius:8px;padding:12px;border:1px solid #2a2f38;">
+    <div style="font-size:.72rem;color:#98a0ab;">Whole machine (load avg)</div>
+    <div style="font-size:1.6rem;font-weight:700;color:${hostColour};font-variant-numeric:tabular-nums;">
+      ${hostPct == null ? '—' : hostPct.toFixed(0) + '%'}
+    </div>
+    <div style="font-size:.7rem;color:#6c727b;">
+      load ${hc.load_1min != null ? hc.load_1min.toFixed(2) : '—'} on ${hc.cpu_count || '?'} cores
+    </div>
+  </div>`;
+
+  // Per-bot cells
+  for (const bot of data.bots) {
+    const pct = bot.total_pcpu_pct || 0;
+    let colour = '#6dd58c';
+    if (pct >= 80) colour = '#ff6b6b';
+    else if (pct >= 30) colour = '#f7c163';
+    const alive = bot.processes.length > 0;
+    body.innerHTML += `<div style="flex:1;min-width:140px;background:#0a0d12;border-radius:8px;padding:12px;">
+      <div style="font-size:.72rem;color:#98a0ab;">${escapeHtml(bot.name)}</div>
+      <div style="font-size:1.6rem;font-weight:700;color:${colour};font-variant-numeric:tabular-nums;">
+        ${alive ? pct.toFixed(1) + '%' : '—'}
+      </div>
+      <div style="font-size:.7rem;color:#6c727b;">
+        ${alive ? 'across ' + bot.processes.length + ' process' + (bot.processes.length!==1?'es':'') : 'not running'}
+      </div>
+    </div>`;
+  }
+
+  // Combined stacked sparkline: host + per-bot, last hour
+  const allSeries = [];
+  if ((data.host_cpu_history || []).length > 1) {
+    allSeries.push({name: 'host', points: data.host_cpu_history, key: 'load_pct'});
+  }
+  for (const b of data.bots) {
+    if ((b.cpu_history || []).length > 1)
+      allSeries.push({name: b.name, points: b.cpu_history, key: 'pcpu_pct'});
+  }
+  if (allSeries.length === 0) {
+    combined.innerHTML = '<div style="font-size:.75rem;color:#98a0ab;">CPU history graph will appear once enough samples are collected (~30 seconds).</div>';
+    return;
+  }
+
+  const W = 600, H = 70;
+  const allTs = [];
+  for (const s of allSeries) for (const p of s.points) allTs.push(new Date(p.ts).getTime());
+  if (allTs.length < 2) { combined.innerHTML = ''; return; }
+  const tMin = Math.min(...allTs), tMax = Math.max(...allTs);
+  const tRange = Math.max(1, tMax - tMin);
+  // CPU% scale is always 0–100 (host is normalised, per-bot can spike higher
+  // briefly but we cap visually at 100 for a stable y-axis).
+  const vMax = 100;
+  const colours = {host: '#e5e9ef', daytrade: '#6db3ff', nighttrade: '#c78dff'};
+
+  let svg = `<div style="font-size:.72rem;color:#98a0ab;margin-bottom:4px;">CPU usage over time (last hour)</div>
+    <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="background:#0a0d12;border-radius:4px;">`;
+  // Y gridlines at 50% and 80%
+  svg += `<line x1="0" y1="${H * 0.5}" x2="${W}" y2="${H * 0.5}" stroke="#2a2f38" stroke-width="0.5" stroke-dasharray="2,3"/>`;
+  svg += `<line x1="0" y1="${H * 0.2}" x2="${W}" y2="${H * 0.2}" stroke="#2a2f38" stroke-width="0.5" stroke-dasharray="2,3"/>`;
+  for (const s of allSeries) {
+    const colour = colours[s.name] || '#98a0ab';
+    const pts = s.points.map(p => {
+      const v = Math.min(p[s.key] || 0, vMax);
+      const x = ((new Date(p.ts).getTime() - tMin) / tRange) * W;
+      const y = H - (v / vMax) * (H - 4) - 2;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    // Host as a thin dashed line so the bots read clearly above it
+    const dash = s.name === 'host' ? `stroke-dasharray="3,2"` : '';
+    svg += `<polyline points="${pts}" fill="none" stroke="${colour}" stroke-width="${s.name === 'host' ? '1.5' : '2'}" ${dash}/>`;
+  }
+  svg += `</svg>`;
+  svg += `<div style="font-size:.7rem;color:#6c727b;display:flex;gap:14px;margin-top:4px;">`;
+  for (const s of allSeries) {
+    const colour = colours[s.name] || '#98a0ab';
+    svg += `<span><span style="display:inline-block;width:10px;height:10px;background:${colour};border-radius:2px;vertical-align:middle;"></span> ${escapeHtml(s.name)}</span>`;
+  }
+  svg += `<span style="margin-left:auto;">scale: 0–100%</span></div>`;
+  combined.innerHTML = svg;
+}
+
 function renderRamOverview(data) {
   const body = document.getElementById('ram-overview-body');
   const combined = document.getElementById('ram-overview-combined');
@@ -649,6 +786,7 @@ async function refresh() {
     document.getElementById('updated').textContent =
         '· ' + new Date(data.now).toLocaleTimeString();
     renderRamOverview(data);
+    renderCpuOverview(data);
     renderBots(data);
 
     const agentGrid = document.getElementById('agent-grid');
@@ -723,8 +861,11 @@ def create_app(bots: Optional[List[Bot]] = None) -> FastAPI:
     def state() -> JSONResponse:
         snapshot = list_processes()
         out_bots: List[Dict[str, Any]] = []
-        # RAM history: pull last 60 minutes for the configured bots
-        ram_series = _ram.by_bot([b.name for b in bots], window_minutes=60)
+        # RAM + CPU history: pull last 60 minutes for the configured bots
+        bot_names = [b.name for b in bots]
+        ram_series = _ram.by_bot(bot_names, window_minutes=60)
+        cpu_series = _cpu.by_bot(bot_names, window_minutes=60)
+        host_cpu_series = _cpu.host(window_minutes=60)
         for b in bots:
             procs = find_bot_processes(b, snapshot)
             db = db_summary(b.db_path)
@@ -742,10 +883,12 @@ def create_app(bots: Optional[List[Bot]] = None) -> FastAPI:
                     "db": db,
                     "heartbeat_age_seconds": hb_age,
                     "ram_history": ram_series.get(b.name, []),
+                    "cpu_history": cpu_series.get(b.name, []),
                     "total_rss_mb": round(sum((p.get("rss_mb") or 0) for p in procs), 1),
+                    "total_pcpu_pct": round(sum((p.get("pcpu_pct") or 0) for p in procs), 1),
                 }
             )
-        # Append current RAM samples so the next request has fresh history
+        # Append current samples so the next request has fresh history
         now_iso = datetime.now(timezone.utc).isoformat()
         _ram.append(
             [
@@ -760,10 +903,26 @@ def create_app(bots: Optional[List[Bot]] = None) -> FastAPI:
                 for p in b["processes"]
             ]
         )
+        _cpu.append_bot_samples(
+            [
+                {
+                    "ts": now_iso,
+                    "bot": b["name"],
+                    "pid": p["pid"],
+                    "pcpu_pct": p.get("pcpu_pct"),
+                }
+                for b in out_bots
+                for p in b["processes"]
+            ]
+        )
+        host_cpu_now = _cpu.sample_host_cpu()
+        _cpu.append_host_sample(host_cpu_now)
         return JSONResponse(
             {
                 "now": now_iso,
                 "host": os.uname().nodename,
+                "host_cpu": host_cpu_now,
+                "host_cpu_history": host_cpu_series + [host_cpu_now],
                 "bots": out_bots,
                 "all_python_processes": snapshot,
             }
