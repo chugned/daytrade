@@ -128,7 +128,24 @@ After editing nighttrade code, run `bash deploy/sync.sh` from nighttrade dev
 to rsync into the deployed directory and reload launchd. Mission control reads
 nighttrade's DB from the **deployed** directory.
 
-Daytrade has no such split — runs from `~/Desktop/coding/daytrade/`.
+Daytrade now has the **same split** (as of 2026-06-03):
+- `~/Desktop/coding/daytrade/` — dev (source of truth for code, where I edit)
+- `~/daytrade/` — deployed (where launchd runs the bot, source of truth for state)
+
+After editing daytrade code, run `bash deploy/sync.sh` from daytrade dev to
+rsync into `~/daytrade` and reload launchd. State (`artifacts/`, `data/`,
+`logs/`) is excluded from the sync — the deployed dir owns the live
+observatory.db + models. Mission control (Project Polaris) reads daytrade's
+DB from the **deployed** directory.
+
+**Why the split exists** (learned the hard way 2026-06-03): macOS TCC will
+not let launchd-spawned processes read `~/Desktop` ("Operation not
+permitted", exit 126). A capital-bearing bot MUST be launchd-supervised so
+it survives shell-close / crash / reboot, therefore it MUST live outside
+`~/Desktop`. Daytrade previously ran as a bare foreground process and
+silently died whenever its parent shell closed. See `deploy/install.sh` +
+ADR-0006 (daytrade) for the full supervision design (learn + dashboard +
+caffeinate + 5-min watchdog).
 
 ## Anti-patterns — DO NOT reintroduce
 

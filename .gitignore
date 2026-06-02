@@ -46,3 +46,4 @@ reports/daily/
 data/learning_state.json
 data/now.json
 data/cache/
+deploy/_svc-run.sh

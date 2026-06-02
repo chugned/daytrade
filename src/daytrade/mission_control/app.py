@@ -50,20 +50,23 @@ def default_bots() -> List[Bot]:
     nighttrade) where source is edited and a deployed directory
     (~/nighttrade) where launchd actually runs it from. The launchd-
     managed observer writes to the DEPLOYED DB / log, so mission
-    control reads from there to see truth. (Daytrade runs from its dev
-    directory — no split.)
+    control reads from there to see truth.
+
+    As of 2026-06-03, daytrade has the SAME dev/deployed split — it is now
+    launchd-supervised and runs from ~/daytrade (macOS will not let launchd
+    services read ~/Desktop). The live state (observatory.db, models) lives
+    in the deployed dir, so mission control reads from there.
     """
     home = Path("/Users/nedimvejo")
-    dt_root = home / "Desktop" / "coding" / "daytrade"
-    nt_dev = home / "Desktop" / "coding" / "nighttrade"  # source of truth for code
+    dt_deployed = home / "daytrade"  # where launchd reads/writes (state lives here)
     nt_deployed = home / "nighttrade"  # where launchd reads/writes
     return [
         Bot(
             name="daytrade",
-            project_root=dt_root,
+            project_root=dt_deployed,
             process_match=["daytrade learn", "daytrade observe"],
-            log_path=dt_root / "logs" / "daytrade.log",
-            db_path=dt_root / "artifacts" / "observatory.db",
+            log_path=dt_deployed / "logs" / "daytrade.log",
+            db_path=dt_deployed / "artifacts" / "observatory.db",
             dashboard_url="http://100.127.143.106:8000",
             notes="paper-trading learning observatory",
         ),
