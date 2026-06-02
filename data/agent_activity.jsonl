@@ -63,3 +63,11 @@
 {"ts": "2026-06-02T01:07:38.762092+00:00", "agent": "claude-main", "kind": "status", "summary": "Rewriting mission control UI in plain English (no jargon)"}
 {"ts": "2026-06-02T01:10:23.021356+00:00", "agent": "claude-main", "kind": "edit", "summary": "Mission control UI rewritten in plain English: no jargon, sentence summary per bot, big stats"}
 {"ts": "2026-06-02T01:10:23.021803+00:00", "agent": "claude-main", "kind": "complete", "summary": "New UI live \u2014 refresh the phone, you should see HEALTHY/STARTING/STOPPED badges, plain numbers, and trend sentences"}
+{"ts": "2026-06-02T01:17:39.606187+00:00", "agent": "claude-main", "kind": "roadmap", "summary": "Added 11 parity work items \u2014 total now 32"}
+{"ts": "2026-06-02T01:17:39.606550+00:00", "agent": "claude-main", "kind": "status", "summary": "Starting comprehensive nighttrade \u2194 daytrade audit + fix sweep"}
+{"ts": "2026-06-02T01:23:45.286836+00:00", "agent": "claude-main", "kind": "edit", "summary": "Ported daytrade ops/ + QA tests + CRIT-1 fix to nighttrade"}
+{"ts": "2026-06-02T01:23:45.287456+00:00", "agent": "claude-main", "kind": "shell", "summary": "Committed + pushed nighttrade PARITY-1+2+3 batch"}
+{"ts": "2026-06-02T01:23:45.289105+00:00", "agent": "claude-main", "kind": "complete", "summary": "PARITY phases 1+2A+3A+4A: ops ported, QA tests ported, price-fetch wrap shipped"}
+{"ts": "2026-06-02T01:28:22.454524+00:00", "agent": "claude-main", "kind": "finding", "summary": "Two-dir issue resolved: dev (~/Desktop/coding/nighttrade) vs deployed (~/nighttrade). Synced."}
+{"ts": "2026-06-02T01:28:22.455118+00:00", "agent": "claude-main", "kind": "shell", "summary": "Reloaded launchd; observer running PID 21937 @266MB via launchctl kickstart"}
+{"ts": "2026-06-02T01:28:22.455312+00:00", "agent": "claude-main", "kind": "complete", "summary": "PARITY phases 1-4, 5B, 6A done; observer running clean on patched code"}

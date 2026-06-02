@@ -1,6 +1,6 @@
 {
   "session_goal": "QA hunt on daytrade + take over nighttrade with same quality bar",
-  "current_phase": "IDLE \u2014 monitoring nighttrade RAM trend (should stay <500MB)",
+  "current_phase": "Most PARITY items shipped \u2014 observer cycling at 266 MB, no longer leaking",
   "items": [
     {
       "id": "VIS-1",
@@ -145,6 +145,83 @@
       "status": "complete",
       "severity": "HIGH",
       "summary": "Cap candle cache + all daytrade QA gates; 3.2GB \u2192 300MB (10x reduction)"
+    },
+    {
+      "id": "PARITY-1",
+      "title": "Compare directory structures: what does daytrade have that nighttrade is missing?",
+      "status": "complete",
+      "severity": "HIGH",
+      "summary": "Inventory: ops/, tests/, docs/, CLI commands, scripts/"
+    },
+    {
+      "id": "PARITY-2A",
+      "title": "Port QA regression tests to nighttrade",
+      "status": "complete",
+      "severity": "HIGH",
+      "summary": "test_qa_crit{1,2,3,4} + test_qa_high_misc + observatory bot-runs tests"
+    },
+    {
+      "id": "PARITY-3A",
+      "title": "Port ops/ tools: instance_lock, reconciliation, api_keys, notify, remote_log, order_ids",
+      "status": "complete",
+      "severity": "HIGH",
+      "summary": "Same defensive tooling \u2014 single-instance enforcement, drift detection, etc."
+    },
+    {
+      "id": "PARITY-4A",
+      "title": "Wrap nighttrade.observer._equity + _manage_positions in try/except",
+      "status": "complete",
+      "severity": "CRITICAL",
+      "summary": "Same crash vector daytrade had: yfinance hiccup currently kills the cycle"
+    },
+    {
+      "id": "PARITY-4B",
+      "title": "Cap symbol_health table to prevent unbounded growth",
+      "status": "queued",
+      "severity": "HIGH",
+      "summary": "503 symbols \u00d7 N cycles \u00d7 insert per cycle \u2014 hot accumulator"
+    },
+    {
+      "id": "PARITY-4C",
+      "title": "Bound the now.json write atomically (already ported, verify)",
+      "status": "queued",
+      "severity": "MEDIUM",
+      "summary": "Verify in code after the recent port"
+    },
+    {
+      "id": "PARITY-5A",
+      "title": "Reduce per-symbol cycle overhead in cross-section ranker",
+      "status": "queued",
+      "severity": "HIGH",
+      "summary": "Look for accumulator dicts/lists not cleared per cycle"
+    },
+    {
+      "id": "PARITY-5B",
+      "title": "Add background watchdog: auto-restart on abort",
+      "status": "complete",
+      "severity": "HIGH",
+      "summary": "Already exists: launchd plist has KeepAlive=true + ThrottleInterval=20"
+    },
+    {
+      "id": "PARITY-6A",
+      "title": "Compare dashboard endpoints between daytrade and nighttrade",
+      "status": "complete",
+      "severity": "MEDIUM",
+      "summary": "nighttrade has its own dashboard on port 8001 (com.nighttrade.dashboard)"
+    },
+    {
+      "id": "PARITY-7A",
+      "title": "Mirror docs/ from daytrade to nighttrade where applicable",
+      "status": "queued",
+      "severity": "LOW",
+      "summary": "GO-LIVE-RUNBOOK, REAL-MONEY-SIMULATION analogs"
+    },
+    {
+      "id": "PARITY-8",
+      "title": "Full test sweep on both repos; verify memory stays bounded over 1h+ window",
+      "status": "queued",
+      "severity": "HIGH",
+      "summary": "Confirmation step: run nighttrade for 1 hour and verify RAM stays below 500MB"
     }
   ]
 }
