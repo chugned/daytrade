@@ -365,13 +365,28 @@ function statusFor(bot) {
 
 function ramTrend(ramHist) {
   if (!ramHist || ramHist.length < 2) return null;
-  const vals = ramHist.map(r => r.rss_mb || 0);
+  // Filter to the current PID's samples ONLY — without this, a recent
+  // restart looks like a leak (old PID's high RSS → new PID's low RSS →
+  // ramp back up gets flagged as 'growing'). Use the trailing run of
+  // samples that share the most recent PID. Also: bots like nighttrade
+  // rotate every 60 cycles by design; that's not a leak.
+  const lastPid = ramHist[ramHist.length - 1].pid;
+  const currentRun = ramHist.filter(r => r.pid === lastPid);
+  if (currentRun.length < 2) return null;
+  const vals = currentRun.map(r => r.rss_mb || 0);
   const first = vals[0], last = vals[vals.length - 1];
   const trendMb = last - first;
-  const minutes = (new Date(ramHist[ramHist.length-1].ts) - new Date(ramHist[0].ts)) / 60000;
+  const minutes = (new Date(currentRun[currentRun.length-1].ts) - new Date(currentRun[0].ts)) / 60000;
   let label = 'stable';
   let colour = '#6dd58c';
-  if (Math.abs(trendMb) < 10) { label = 'stable'; colour = '#6dd58c'; }
+  // Startup grace period: a process needs at least 10 min of samples
+  // before we trust trend classification. Imports + meta-model load +
+  // first-cycle ramp routinely add 200-400 MB in the first few minutes;
+  // calling that a "leak" would cry wolf on every restart.
+  if (minutes < 10) {
+    label = 'just started — still warming up';
+    colour = '#98a0ab';
+  } else if (Math.abs(trendMb) < 10) { label = 'stable'; colour = '#6dd58c'; }
   else if (trendMb > 50) { label = 'growing (possible leak)'; colour = '#ff6b6b'; }
   else if (trendMb > 10) { label = 'slowly growing'; colour = '#f7c163'; }
   else if (trendMb < -50) { label = 'dropped sharply'; colour = '#6db3ff'; }
