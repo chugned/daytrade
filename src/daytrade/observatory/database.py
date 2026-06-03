@@ -567,6 +567,14 @@ class ObservatoryDB:
         return self._all("SELECT * FROM activity_events "
                          "ORDER BY id DESC LIMIT ?", (limit,))
 
+    def latest_activity_event(self, event: str) -> Optional[Dict[str, Any]]:
+        """Most recent activity row with this exact ``event`` string, scanning
+        the WHOLE table (not a recent-N window). Used for status flags like
+        'meta-model retrained' whose marker can fall far outside any fixed
+        recent-activity window between occurrences."""
+        return self._one("SELECT * FROM activity_events WHERE event=? "
+                         "ORDER BY id DESC LIMIT 1", (event,))
+
     # -- queries -------------------------------------------------------------
 
     def latest_safety_score(self) -> Optional[Dict[str, Any]]:

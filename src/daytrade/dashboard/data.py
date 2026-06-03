@@ -495,8 +495,6 @@ class DashboardData:
         """
         rows = self.db.recent_activity(limit=800)
         regime = calibration = meta = 0
-        meta_status = "warming up"
-        meta_detail = ""
         for r in rows:
             event = r.get("event", "") or ""
             if event.startswith("regime gate blocked"):
@@ -505,9 +503,18 @@ class DashboardData:
                 calibration += 1
             elif event.startswith("meta-model blocked"):
                 meta += 1
-            elif event == "meta-model retrained" and meta_status == "warming up":
-                meta_status = "trained"
-                meta_detail = r.get("detail", "") or ""
+        # Meta-model status: query the retrain marker DIRECTLY rather than
+        # scraping the recent-800 window. Retrains happen every ~30 cycles but
+        # each cycle emits ~33 per-symbol events, so the 'retrained' marker
+        # routinely sits >800 events back — the old scan missed it and falsely
+        # showed 'warming up' on a fully-trained, actively-gating model.
+        last_retrain = self.db.latest_activity_event("meta-model retrained")
+        if last_retrain:
+            meta_status = "trained"
+            meta_detail = last_retrain.get("detail", "") or ""
+        else:
+            meta_status = "warming up"
+            meta_detail = ""
         return {
             "regime_blocks": regime,
             "calibration_blocks": calibration,
