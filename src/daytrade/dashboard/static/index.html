@@ -470,7 +470,14 @@ async function renderEquity(){
     grid:{left:62,right:16,top:14,bottom:26},
     xAxis:{type:'category',data:p.map(x=>tMD(x.ts)),
       axisLabel:{color:t.axis,fontSize:10},axisLine:{lineStyle:{color:t.grid}}},
-    yAxis:{type:'value',scale:true,axisLabel:{color:t.axis,formatter:v=>'€'+v},
+    yAxis:{type:'value',
+      // Pad the axis below the lowest and above the highest equity so the
+      // line never hugs (and visually clips into) the chart edges. With a
+      // bare scale:true the axis floor sat exactly on the data minimum, so
+      // the lowest points looked "swallowed" by the bottom gridline.
+      min:v=>{const r=(v.max-v.min)||Math.max(1,v.max*0.01);return Math.floor(v.min-r*0.12);},
+      max:v=>{const r=(v.max-v.min)||Math.max(1,v.max*0.01);return Math.ceil(v.max+r*0.08);},
+      axisLabel:{color:t.axis,formatter:v=>'€'+v},
       splitLine:{lineStyle:{color:t.grid}}},
     tooltip:{trigger:'axis',valueFormatter:v=>'€'+fmt(v,2)},
     series:[{type:'line',smooth:true,symbol:'none',data:p.map(x=>x.equity),
