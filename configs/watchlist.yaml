@@ -40,7 +40,8 @@ symbols:
   - VETUSDT
   - ALGOUSDT
   - AAVEUSDT
-  - MKRUSDT
+  # MKRUSDT removed 2026-06-03 — delisted on Binance (klines returned a
+  # candle ~261 days old, so the observer skipped it every cycle as stale).
   - SUIUSDT
   - SEIUSDT
   - TIAUSDT
