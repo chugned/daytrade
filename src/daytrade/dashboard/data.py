@@ -320,8 +320,12 @@ class DashboardData:
                 for s in self.db.safety_score_history(limit)]
 
     def equity_history(self) -> Dict[str, Any]:
-        """Accumulated paper-equity curve — the visual 'gain over time'."""
-        curve = self.db.equity_curve(limit=3000)
+        """Accumulated paper-equity curve — the visual 'gain over time'.
+
+        Full history from the €1000 start (downsampled to keep the payload
+        light) so the early ramp is visible, not just the recent window.
+        """
+        curve = self.db.equity_curve(full=True, max_points=2500)
         points = [{
             "ts": r["ts"], "equity": r["equity"],
             "gain": round((r["equity"] or _STARTING_CASH) - _STARTING_CASH, 2),

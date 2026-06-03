@@ -590,11 +590,31 @@ class ObservatoryDB:
         peak = row[0] if row and row[0] is not None else 0.0
         return float(peak)
 
-    def equity_curve(self, limit: int = 3000) -> List[Dict[str, Any]]:
-        """Per-cycle paper-equity history (drives the accumulated-gain chart)."""
-        return list(reversed(self._all(
+    def equity_curve(self, limit: int = 3000, full: bool = False,
+                     max_points: int = 2500) -> List[Dict[str, Any]]:
+        """Per-cycle paper-equity history (drives the accumulated-gain chart).
+
+        Default: the most-recent ``limit`` cycles (newest window).
+        ``full=True``: the ENTIRE history from the very first cycle, so the
+        chart shows the ramp from the €1000 start — but downsampled to at
+        most ``max_points`` points (preserving the first and last) so the
+        payload stays light on mobile rather than shipping every row.
+        """
+        if not full:
+            return list(reversed(self._all(
+                "SELECT ts, equity, drawdown_pct, score FROM safety_scores "
+                "WHERE equity IS NOT NULL ORDER BY id DESC LIMIT ?", (limit,))))
+        rows = self._all(
             "SELECT ts, equity, drawdown_pct, score FROM safety_scores "
-            "WHERE equity IS NOT NULL ORDER BY id DESC LIMIT ?", (limit,))))
+            "WHERE equity IS NOT NULL ORDER BY id ASC")
+        n = len(rows)
+        if n <= max_points:
+            return rows
+        # Even stride sample, always keeping the first and last real points so
+        # the curve spans the full start→now range without distorting its ends.
+        step = n / max_points
+        idx = sorted({int(i * step) for i in range(max_points)} | {n - 1})
+        return [rows[i] for i in idx]
 
     def latest_symbol_health(self) -> List[Dict[str, Any]]:
         return self._all(
